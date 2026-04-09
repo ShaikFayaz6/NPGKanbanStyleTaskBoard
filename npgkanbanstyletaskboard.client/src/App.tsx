@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { DndContext, DragEndEvent, PointerSensor, closestCorners, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragEndEvent, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { createTask, createTeamMember, getTasks, getTeamMembers, updateTaskStatus } from "./api";
@@ -52,6 +52,34 @@ function TaskCard({ task, assignee }: { task: Task; assignee?: TeamMember }) {
         )}
       </div>
     </article>
+  );
+}
+
+function Column({
+  id,
+  label,
+  tasks,
+  assigneeById
+}: {
+  id: TaskStatus;
+  label: string;
+  tasks: Task[];
+  assigneeById: Record<string, TeamMember>;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <section className="column">
+      <h3>{label}</h3>
+      <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+        <div ref={setNodeRef} className={`dropzone ${isOver ? "dropzone-over" : ""}`}>
+          {tasks.length === 0 ? <p className="empty">No tasks yet.</p> : null}
+          {tasks.map((task) => (
+            <TaskCard key={task.id} task={task} assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined} />
+          ))}
+        </div>
+      </SortableContext>
+    </section>
   );
 }
 
@@ -271,17 +299,7 @@ export function App() {
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={(e) => void onDragEnd(e)}>
         <section className="board">
           {columns.map((column) => (
-            <section key={column.id} id={column.id} className="column">
-              <h3>{column.label}</h3>
-              <SortableContext items={grouped[column.id].map((task) => task.id)} strategy={verticalListSortingStrategy}>
-                <div className="dropzone">
-                  {grouped[column.id].length === 0 ? <p className="empty">No tasks yet.</p> : null}
-                  {grouped[column.id].map((task) => (
-                    <TaskCard key={task.id} task={task} assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined} />
-                  ))}
-                </div>
-              </SortableContext>
-            </section>
+            <Column key={column.id} id={column.id} label={column.label} tasks={grouped[column.id]} assigneeById={assigneeById} />
           ))}
         </section>
       </DndContext>
