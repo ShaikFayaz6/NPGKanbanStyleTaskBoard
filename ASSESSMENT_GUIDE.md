@@ -140,14 +140,43 @@ For production hosting, set environment variables/configuration values for:
 - Loading, error, and empty states
 - Responsive polished UI styling
 
-## 6) Hosting
+## 6) Hosting (Vercel + Render)
 
-Recommended fast path:
+**Order:** deploy **Render (API) first**, then point **Vercel** at it via `vercel.json` rewrites.
 
-- Deploy frontend (`npgkanbanstyletaskboard.client`) to Vercel.
-- Deploy ASP.NET backend (`NPGKanbanStyleTaskBoard.Server`) to Render/Railway/Azure free option.
-- In hosted frontend, set API base to hosted backend domain if needed.
-- In hosted backend, set `Supabase__Url` and `Supabase__AnonKey` in secret env vars.
+### A) Render — ASP.NET backend (Docker)
+
+Render’s default **Node** build image does **not** include `dotnet`. This repo includes a root **`Dockerfile`** so the build runs in Microsoft’s **.NET SDK** image.
+
+1. **Commit and push** `Dockerfile` and `.dockerignore` from the repo root.
+2. [render.com](https://render.com) → your **Web Service** → **Settings**.
+3. **Environment** → set to **Docker** (not Node).
+4. **Dockerfile path:** `Dockerfile` (repo root).
+5. **Build command:** leave **empty** (Docker build handles it).
+6. **Start command:** leave **empty** (image `ENTRYPOINT` runs the app).
+7. **Environment variables** (same as before):
+   - `Supabase__Url` = your Supabase project URL
+   - `Supabase__AnonKey` = your Supabase anon/public key
+   - `ASPNETCORE_ENVIRONMENT` = `Production`
+   - Render injects **`PORT`** automatically; `Program.cs` listens on it.
+8. **Manual deploy** → **Deploy latest commit** (or push to `main` to trigger build).
+9. Open `https://your-service.onrender.com/swagger`
+
+If you still see “Using Node.js”, create a **new** Web Service and pick **Docker** at creation time, or remove any **Root Directory** override that points at a Node app.
+
+### B) Vercel — React (Vite) frontend
+
+1. [vercel.com](https://vercel.com) → **Add New** → **Project** → import the same repo.
+2. **Root Directory:** `npgkanbanstyletaskboard.client`
+3. Framework: **Vite** (auto). **Build:** `npm run build` · **Output:** `dist`
+4. **Environment Variables** (Project → Settings → Environment Variables):
+   - `VITE_SUPABASE_URL` = same as local `.env`
+   - `VITE_SUPABASE_ANON_KEY` = same anon key (never service role)
+5. Edit `npgkanbanstyletaskboard.client/vercel.json`: replace `YOUR_RENDER_SERVICE` with your real Render hostname (no trailing slash), e.g. `https://npg-api.onrender.com`
+6. Commit and push `vercel.json` + redeploy Vercel.
+7. Open your **Vercel URL** — the app calls `/api/...`, which Vercel proxies to Render.
+
+**Secrets:** only set keys in Render and Vercel dashboards. Do not commit `.env` or real keys in `vercel.json` (only the public API hostname).
 
 ## 7) Final Submission Document Checklist
 

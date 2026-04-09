@@ -1,0 +1,15 @@
+**/.git
+**/.vs
+**/.idea
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/.angular
+**/.env
+**/.env.*
+!**/.env.example
+**/packages
+**/*.user
+**/Thumbs.db
+**/.DS_Store
