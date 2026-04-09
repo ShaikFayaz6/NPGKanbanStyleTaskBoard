@@ -1,0 +1,6 @@
+@NPGKanbanStyleTaskBoard.Server_HostAddress = http://localhost:5179
+
+GET {{NPGKanbanStyleTaskBoard.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

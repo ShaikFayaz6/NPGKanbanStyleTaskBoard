@@ -1,0 +1,229 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  background: #0b1021;
+  color: #e5e7eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #1a2452, #0b1021 45%);
+}
+
+.layout {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(1.4rem, 2vw, 2rem);
+}
+
+.hero p {
+  margin-top: 0.5rem;
+  opacity: 0.85;
+}
+
+.composer form,
+.column {
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid #29314a;
+  border-radius: 14px;
+}
+
+.composer form {
+  padding: 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+input,
+textarea,
+select,
+button {
+  border-radius: 10px;
+  border: 1px solid #3b435f;
+  background: #111827;
+  color: #e5e7eb;
+  padding: 0.6rem 0.75rem;
+}
+
+button {
+  cursor: pointer;
+  border-color: #7c3aed;
+  background: #7c3aed;
+  font-weight: 600;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 0.6rem;
+}
+
+.filters {
+  margin: 1rem 0;
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: 2fr 1fr 1fr;
+}
+
+.stats-grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+}
+
+.stat-card {
+  border: 1px solid #29314a;
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: rgba(17, 24, 39, 0.9);
+  display: flex;
+  justify-content: space-between;
+}
+
+.stat-card strong {
+  font-size: 1.3rem;
+}
+
+.board {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(4, minmax(230px, 1fr));
+}
+
+.column {
+  padding: 0.75rem;
+  min-height: 280px;
+}
+
+.dropzone {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.task-card {
+  background: #131c31;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 0.7rem;
+  touch-action: none;
+}
+
+.task-card h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.task-card p {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.88rem;
+}
+
+.task-meta {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+.due-badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.due-overdue {
+  color: #fecaca;
+  border-color: #ef4444;
+}
+
+.due-soon {
+  color: #fde68a;
+  border-color: #f59e0b;
+}
+
+.due-ok {
+  color: #93c5fd;
+  border-color: #3b82f6;
+}
+
+.assignee-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.assignee-pill i {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.empty-assignee {
+  opacity: 0.6;
+}
+
+.priority {
+  text-transform: capitalize;
+}
+
+.priority.high {
+  color: #fca5a5;
+}
+
+.priority.normal {
+  color: #bfdbfe;
+}
+
+.priority.low {
+  color: #86efac;
+}
+
+.centered,
+.error,
+.empty {
+  text-align: center;
+}
+
+.error {
+  color: #fda4af;
+}
+
+@media (max-width: 980px) {
+  .row {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .board {
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .row,
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .board {
+    grid-template-columns: 1fr;
+  }
+}
+/* You can add global styles to this file, and also import other style files */
