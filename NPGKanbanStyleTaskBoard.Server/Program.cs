@@ -16,14 +16,16 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// Swagger: enable in all environments so hosted API is easy to verify (tighten for production if needed).
+app.UseSwagger();
+app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// Hosted platforms (e.g. Render) terminate TLS; app listens on HTTP behind the proxy.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (string.IsNullOrEmpty(port))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthorization();
 
@@ -31,4 +33,12 @@ app.MapControllers();
 
 app.MapFallbackToFile("/index.html");
 
-app.Run("https://localhost:7056;http://localhost:5180");
+// Render and similar hosts inject PORT; local dev uses Kestrel defaults from launchSettings or localhost below.
+if (!string.IsNullOrEmpty(port))
+{
+    app.Run($"http://0.0.0.0:{port}");
+}
+else
+{
+    app.Run("https://localhost:7056;http://localhost:5180");
+}
