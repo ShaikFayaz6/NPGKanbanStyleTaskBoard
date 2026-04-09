@@ -80,10 +80,13 @@ export function App() {
         let token = session.data.session?.access_token;
         if (!token) {
           const signedIn = await supabase.auth.signInAnonymously();
+          if (signedIn.error) {
+            throw new Error(`Supabase anonymous sign-in failed: ${signedIn.error.message}`);
+          }
           token = signedIn.data.session?.access_token;
         }
         if (!token) {
-          throw new Error("Guest session could not be created.");
+          throw new Error("Guest session could not be created (no access token returned).");
         }
         setAccessToken(token);
         const [loadedTasks, loadedMembers] = await Promise.all([getTasks(token), getTeamMembers(token)]);
