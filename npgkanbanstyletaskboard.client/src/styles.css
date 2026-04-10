@@ -146,25 +146,64 @@ input[type="color"] {
   position: relative;
 }
 
-.kebab {
+.task-card h4 {
+  padding-right: 2.75rem;
+}
+
+.task-card-menu {
   position: absolute;
-  top: 0.45rem;
-  left: 0.45rem;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 6;
+}
+
+.kebab {
   width: 36px;
   height: 30px;
   border-radius: 10px;
   border: 1px solid #334155;
-  background: rgba(17, 24, 39, 0.6);
+  background: rgba(17, 24, 39, 0.85);
   color: #e5e7eb;
   cursor: pointer;
   font-size: 18px;
   line-height: 18px;
 }
 
-.task-actions {
-  margin-top: 0.6rem;
-  display: flex;
-  gap: 0.5rem;
+.task-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  padding: 0.35rem;
+  border-radius: 12px;
+  border: 1px solid #29314a;
+  background: rgba(15, 23, 42, 0.98);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e5e7eb;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.menu-item.danger-text {
+  color: #fecaca;
+}
+
+.menu-item.danger-text:hover {
+  background: rgba(239, 68, 68, 0.12);
 }
 
 .ghost {
@@ -175,12 +214,6 @@ input[type="color"] {
 .danger {
   border-color: #ef4444;
   background: #ef4444;
-}
-
-.ghost.danger {
-  color: #fecaca;
-  border-color: #7f1d1d;
-  background: rgba(239, 68, 68, 0.08);
 }
 
 .modal-backdrop {
@@ -199,6 +232,16 @@ input[type="color"] {
   border: 1px solid #29314a;
   border-radius: 14px;
   padding: 1rem;
+}
+
+.modal-wide {
+  width: min(760px, 100%);
+}
+
+.timeline-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  opacity: 0.75;
 }
 
 .modal-header,

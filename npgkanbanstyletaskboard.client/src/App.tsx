@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -39,28 +39,50 @@ function dueUrgencyBadge(task: Task): { label: string; className: string } | nul
   return toDueBadge(task.dueDate);
 }
 
+function statusKeyToLabel(key: string | null | undefined): string {
+  if (!key) return "";
+  const found = columns.find((c) => c.id === key);
+  return found?.label ?? key;
+}
+
 function formatActivityRow(row: TaskActivity): string {
   if (row.type === "status_changed") {
-    return `Moved: ${row.fromValue ?? ""} → ${row.toValue ?? ""}`;
+    return `Moved from ${statusKeyToLabel(row.fromValue)} to ${statusKeyToLabel(row.toValue)}`;
   }
   if (row.type === "due_date_changed") {
-    return `Due date: ${row.fromValue ?? "none"} → ${row.toValue ?? "none"}`;
+    return `Due date changed: ${row.fromValue ?? "none"} → ${row.toValue ?? "none"}`;
   }
   return "Task deleted";
+}
+
+type TimelineEntry =
+  | { kind: "created"; at: string; label: string }
+  | { kind: "activity"; row: TaskActivity };
+
+function buildTimeline(task: Task, rows: TaskActivity[]): TimelineEntry[] {
+  const created: TimelineEntry = {
+    kind: "created",
+    at: task.createdAt,
+    label: `Task created (started in ${stageLabel("todo")})`
+  };
+  const activitySorted = [...rows].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return [created, ...activitySorted.map((row) => ({ kind: "activity" as const, row }))];
 }
 
 function TaskCard({
   task,
   assignee,
-  onEditDueDate,
-  onDelete,
-  onHistory
+  menuOpen,
+  onToggleMenu,
+  onOpenHistory,
+  onRequestDelete
 }: {
   task: Task;
   assignee?: TeamMember;
-  onEditDueDate: (task: Task) => void;
-  onDelete: (task: Task) => void;
-  onHistory: (task: Task) => void;
+  menuOpen: boolean;
+  onToggleMenu: () => void;
+  onOpenHistory: () => void;
+  onRequestDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -68,19 +90,37 @@ function TaskCard({
 
   return (
     <article ref={setNodeRef} style={style} className="task-card" {...attributes} {...listeners}>
-      <button
-        type="button"
-        className="kebab"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onHistory(task);
-        }}
-        aria-label="Task options"
-        title="Options"
+      <div
+        className="task-card-menu"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
-        ⋯
-      </button>
+        <button
+          type="button"
+          className="kebab"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggleMenu();
+          }}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          aria-label="Task options"
+          title="Options"
+        >
+          ⋯
+        </button>
+        {menuOpen ? (
+          <div className="task-menu-dropdown" role="menu">
+            <button type="button" className="menu-item" role="menuitem" onClick={() => onOpenHistory()}>
+              History
+            </button>
+            <button type="button" className="menu-item danger-text" role="menuitem" onClick={() => onRequestDelete()}>
+              Delete
+            </button>
+          </div>
+        ) : null}
+      </div>
       <h4>{task.title}</h4>
       {task.description ? <p>{task.description}</p> : null}
       <div className="task-stage">
@@ -101,14 +141,6 @@ function TaskCard({
           <span className="assignee-pill empty-assignee">Unassigned</span>
         )}
       </div>
-      <div className="task-actions">
-        <button type="button" className="ghost" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditDueDate(task); }}>
-          Due date
-        </button>
-        <button type="button" className="ghost danger" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(task); }}>
-          Delete
-        </button>
-      </div>
     </article>
   );
 }
@@ -118,17 +150,19 @@ function Column({
   label,
   tasks,
   assigneeById,
-  onEditDueDate,
-  onDelete,
-  onHistory
+  openMenuTaskId,
+  onToggleMenu,
+  onOpenHistory,
+  onRequestDelete
 }: {
   id: TaskStatus;
   label: string;
   tasks: Task[];
   assigneeById: Record<string, TeamMember>;
-  onEditDueDate: (task: Task) => void;
-  onDelete: (task: Task) => void;
-  onHistory: (task: Task) => void;
+  openMenuTaskId: string | null;
+  onToggleMenu: (taskId: string) => void;
+  onOpenHistory: (task: Task) => void;
+  onRequestDelete: (task: Task) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -143,9 +177,10 @@ function Column({
               key={task.id}
               task={task}
               assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined}
-              onEditDueDate={onEditDueDate}
-              onDelete={onDelete}
-              onHistory={onHistory}
+              menuOpen={openMenuTaskId === task.id}
+              onToggleMenu={() => onToggleMenu(task.id)}
+              onOpenHistory={() => onOpenHistory(task)}
+              onRequestDelete={() => onRequestDelete(task)}
             />
           ))}
         </div>
@@ -170,12 +205,26 @@ export function App() {
   const [searchText, setSearchText] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "normal" | "high">("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
-  const sensors = useSensors(useSensor(PointerSensor));
-  const [menuTask, setMenuTask] = useState<Task | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 10 }
+    })
+  );
+  const [openMenuTaskId, setOpenMenuTaskId] = useState<string | null>(null);
+  const [historyTask, setHistoryTask] = useState<Task | null>(null);
   const [history, setHistory] = useState<TaskActivity[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [dueDateDraft, setDueDateDraft] = useState<string>("");
+  const menuCloseRef = useRef<(() => void) | null>(null);
+  menuCloseRef.current = () => setOpenMenuTaskId(null);
+
+  useEffect(() => {
+    function onDocPointerDown() {
+      menuCloseRef.current?.();
+    }
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, []);
 
   useEffect(() => {
     async function bootstrap() {
@@ -300,10 +349,15 @@ export function App() {
     }
   }
 
-  async function openHistory(task: Task) {
+  function toggleTaskMenu(taskId: string) {
+    setOpenMenuTaskId((current) => (current === taskId ? null : taskId));
+  }
+
+  async function openHistoryModal(task: Task) {
     if (!accessToken) return;
-    setMenuTask(task);
-    setMenuOpen(true);
+    setOpenMenuTaskId(null);
+    setHistoryTask(task);
+    setDueDateDraft(task.dueDate ?? "");
     setHistory([]);
     setHistoryLoading(true);
     try {
@@ -316,21 +370,24 @@ export function App() {
     }
   }
 
-  function openDueDate(task: Task) {
-    setMenuTask(task);
-    setDueDateDraft(task.dueDate ?? "");
-    setMenuOpen(true);
-  }
-
   async function saveDueDate() {
-    if (!accessToken || !menuTask) return;
+    if (!accessToken || !historyTask) return;
     try {
-      const updated = await updateTaskDueDate(accessToken, menuTask.id, dueDateDraft || null);
+      const updated = await updateTaskDueDate(accessToken, historyTask.id, dueDateDraft || null);
       setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
-      setMenuOpen(false);
+      setHistoryTask((t) => (t && t.id === updated.id ? updated : t));
+      const rows = await getTaskActivity(accessToken, updated.id);
+      setHistory(rows);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update due date.");
     }
+  }
+
+  function requestDeleteFromMenu(task: Task) {
+    setOpenMenuTaskId(null);
+    const ok = window.confirm("Are you sure you want to delete this task?");
+    if (!ok) return;
+    void removeTask(task);
   }
 
   async function removeTask(task: Task) {
@@ -339,7 +396,7 @@ export function App() {
     setTasks((current) => current.filter((t) => t.id !== task.id));
     try {
       await deleteTask(accessToken, task.id);
-      setMenuOpen(false);
+      setHistoryTask((t) => (t?.id === task.id ? null : t));
     } catch (err) {
       setTasks(snapshot);
       setError(err instanceof Error ? err.message : "Failed to delete task.");
@@ -427,20 +484,21 @@ export function App() {
               label={column.label}
               tasks={grouped[column.id]}
               assigneeById={assigneeById}
-              onEditDueDate={openDueDate}
-              onDelete={removeTask}
-              onHistory={openHistory}
+              openMenuTaskId={openMenuTaskId}
+              onToggleMenu={toggleTaskMenu}
+              onOpenHistory={openHistoryModal}
+              onRequestDelete={requestDeleteFromMenu}
             />
           ))}
         </section>
       </DndContext>
 
-      {menuOpen && menuTask ? (
-        <div className="modal-backdrop" onClick={() => setMenuOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+      {historyTask ? (
+        <div className="modal-backdrop" onClick={() => setHistoryTask(null)}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <strong>{menuTask.title}</strong>
-              <button className="ghost" type="button" onClick={() => setMenuOpen(false)}>
+              <strong>{historyTask.title}</strong>
+              <button className="ghost" type="button" onClick={() => setHistoryTask(null)}>
                 Close
               </button>
             </div>
@@ -456,27 +514,27 @@ export function App() {
             </div>
 
             <div className="modal-section">
-              <label className="label">History</label>
+              <label className="label">Activity timeline</label>
+              <p className="timeline-hint">Newest changes appear at the bottom after creation.</p>
               {historyLoading ? (
                 <p className="empty">Loading…</p>
-              ) : history.length === 0 ? (
-                <p className="empty">No history yet.</p>
               ) : (
                 <ul className="history">
-                  {history.map((row) => (
-                    <li key={row.id}>
-                      <span>{formatActivityRow(row)}</span>
-                      <time>{new Date(row.createdAt).toLocaleString()}</time>
-                    </li>
-                  ))}
+                  {buildTimeline(historyTask, history).map((entry, idx) =>
+                    entry.kind === "created" ? (
+                      <li key={`created-${idx}`}>
+                        <span>{entry.label}</span>
+                        <time>{new Date(entry.at).toLocaleString()}</time>
+                      </li>
+                    ) : (
+                      <li key={entry.row.id}>
+                        <span>{formatActivityRow(entry.row)}</span>
+                        <time>{new Date(entry.row.createdAt).toLocaleString()}</time>
+                      </li>
+                    )
+                  )}
                 </ul>
               )}
-            </div>
-
-            <div className="modal-footer">
-              <button type="button" className="danger" onClick={() => void removeTask(menuTask)}>
-                Delete task
-              </button>
             </div>
           </div>
         </div>
