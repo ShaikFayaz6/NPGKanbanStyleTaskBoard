@@ -27,21 +27,36 @@ function toDueBadge(dueDate: string | null): { label: string; className: string 
   return { label: "Scheduled", className: "due-ok" };
 }
 
+function stageLabel(status: TaskStatus): string {
+  return columns.find((c) => c.id === status)?.label ?? status;
+}
+
+/** Due-date urgency (not Kanban stage). Hidden once the task is completed. */
+function dueUrgencyBadge(task: Task): { label: string; className: string } | null {
+  if (task.status === "done") {
+    return { label: "Completed", className: "stage-completed" };
+  }
+  return toDueBadge(task.dueDate);
+}
+
 function TaskCard({ task, assignee }: { task: Task; assignee?: TeamMember }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const dueBadge = toDueBadge(task.dueDate);
+  const urgency = dueUrgencyBadge(task);
 
   return (
     <article ref={setNodeRef} style={style} className="task-card" {...attributes} {...listeners}>
       <h4>{task.title}</h4>
       {task.description ? <p>{task.description}</p> : null}
+      <div className="task-stage">
+        <span className="stage-chip">Stage: {stageLabel(task.status)}</span>
+      </div>
       <div className="task-meta">
         <span className={`priority ${task.priority}`}>{task.priority}</span>
         {task.dueDate ? <span>Due {task.dueDate}</span> : null}
       </div>
       <div className="task-meta">
-        {dueBadge ? <span className={`due-badge ${dueBadge.className}`}>{dueBadge.label}</span> : <span />}
+        {urgency ? <span className={`due-badge ${urgency.className}`}>{urgency.label}</span> : <span />}
         {assignee ? (
           <span className="assignee-pill">
             <i style={{ background: assignee.color }} />
