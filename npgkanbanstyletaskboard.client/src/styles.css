@@ -116,18 +116,24 @@ input[type="color"] {
   margin-top: 1rem;
   display: grid;
   gap: 0.8rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* minmax(0, 1fr) lets columns shrink below long unbroken strings (grid default min-width: auto prevents that). */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
 .column {
   padding: 0.75rem;
   min-height: 280px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .dropzone {
   display: grid;
   gap: 0.6rem;
   min-height: 120px;
+  min-width: 0;
+  max-width: 100%;
   border-radius: 12px;
   padding: 0.25rem;
 }
@@ -144,6 +150,10 @@ input[type="color"] {
   padding: 0.7rem;
   touch-action: none;
   position: relative;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 .task-card-title {
@@ -155,6 +165,7 @@ input[type="color"] {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+  min-width: 0;
 }
 
 .task-card-title.is-truncated {
@@ -177,6 +188,9 @@ input[type="color"] {
   -webkit-line-clamp: 2;
   overflow: hidden;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .task-card-desc.is-truncated {
@@ -401,8 +415,15 @@ input[type="color"] {
   margin-top: 0.6rem;
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
   font-size: 0.75rem;
   opacity: 0.85;
+  min-width: 0;
+}
+
+.task-meta > span {
+  min-width: 0;
 }
 
 .due-badge {
