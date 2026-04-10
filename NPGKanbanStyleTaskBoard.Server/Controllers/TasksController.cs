@@ -58,6 +58,45 @@ public sealed class TasksController(ISupabaseTasksGateway gateway) : ControllerB
         return Ok(updated);
     }
 
+    [HttpPatch("{taskId:guid}/due-date")]
+    public async Task<ActionResult<TaskItem>> UpdateTaskDueDate(Guid taskId, [FromBody] UpdateTaskDueDateRequest request, CancellationToken cancellationToken)
+    {
+        var accessToken = ReadAccessToken();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return Unauthorized("Missing bearer token.");
+        }
+
+        var updated = await gateway.UpdateTaskDueDateAsync(accessToken, taskId, request.DueDate, cancellationToken);
+        return Ok(updated);
+    }
+
+    [HttpDelete("{taskId:guid}")]
+    public async Task<IActionResult> DeleteTask(Guid taskId, CancellationToken cancellationToken)
+    {
+        var accessToken = ReadAccessToken();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return Unauthorized("Missing bearer token.");
+        }
+
+        await gateway.DeleteTaskAsync(accessToken, taskId, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpGet("{taskId:guid}/activity")]
+    public async Task<ActionResult<IReadOnlyList<TaskActivity>>> GetTaskActivity(Guid taskId, CancellationToken cancellationToken)
+    {
+        var accessToken = ReadAccessToken();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return Unauthorized("Missing bearer token.");
+        }
+
+        var activity = await gateway.GetTaskActivityAsync(accessToken, taskId, cancellationToken);
+        return Ok(activity);
+    }
+
     private string ReadAccessToken()
     {
         var authHeader = HttpContext.Request.Headers.Authorization.ToString();

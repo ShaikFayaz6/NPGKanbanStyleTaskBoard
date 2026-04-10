@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { createTask, createTeamMember, getTasks, getTeamMembers, updateTaskStatus } from "./api";
+import { createTask, createTeamMember, deleteTask, getTaskActivity, getTasks, getTeamMembers, updateTaskDueDate, updateTaskStatus } from "./api";
 import { supabase } from "./supabase";
-import type { Task, TaskStatus, TeamMember } from "./types";
+import type { Task, TaskActivity, TaskStatus, TeamMember } from "./types";
 
 const columns: Array<{ id: TaskStatus; label: string }> = [
   { id: "todo", label: "To Do" },
@@ -39,13 +39,48 @@ function dueUrgencyBadge(task: Task): { label: string; className: string } | nul
   return toDueBadge(task.dueDate);
 }
 
-function TaskCard({ task, assignee }: { task: Task; assignee?: TeamMember }) {
+function formatActivityRow(row: TaskActivity): string {
+  if (row.type === "status_changed") {
+    return `Moved: ${row.fromValue ?? ""} → ${row.toValue ?? ""}`;
+  }
+  if (row.type === "due_date_changed") {
+    return `Due date: ${row.fromValue ?? "none"} → ${row.toValue ?? "none"}`;
+  }
+  return "Task deleted";
+}
+
+function TaskCard({
+  task,
+  assignee,
+  onEditDueDate,
+  onDelete,
+  onHistory
+}: {
+  task: Task;
+  assignee?: TeamMember;
+  onEditDueDate: (task: Task) => void;
+  onDelete: (task: Task) => void;
+  onHistory: (task: Task) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const urgency = dueUrgencyBadge(task);
 
   return (
     <article ref={setNodeRef} style={style} className="task-card" {...attributes} {...listeners}>
+      <button
+        type="button"
+        className="kebab"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onHistory(task);
+        }}
+        aria-label="Task options"
+        title="Options"
+      >
+        ⋯
+      </button>
       <h4>{task.title}</h4>
       {task.description ? <p>{task.description}</p> : null}
       <div className="task-stage">
@@ -66,6 +101,14 @@ function TaskCard({ task, assignee }: { task: Task; assignee?: TeamMember }) {
           <span className="assignee-pill empty-assignee">Unassigned</span>
         )}
       </div>
+      <div className="task-actions">
+        <button type="button" className="ghost" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditDueDate(task); }}>
+          Due date
+        </button>
+        <button type="button" className="ghost danger" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(task); }}>
+          Delete
+        </button>
+      </div>
     </article>
   );
 }
@@ -74,12 +117,18 @@ function Column({
   id,
   label,
   tasks,
-  assigneeById
+  assigneeById,
+  onEditDueDate,
+  onDelete,
+  onHistory
 }: {
   id: TaskStatus;
   label: string;
   tasks: Task[];
   assigneeById: Record<string, TeamMember>;
+  onEditDueDate: (task: Task) => void;
+  onDelete: (task: Task) => void;
+  onHistory: (task: Task) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -90,7 +139,14 @@ function Column({
         <div ref={setNodeRef} className={`dropzone ${isOver ? "dropzone-over" : ""}`}>
           {tasks.length === 0 ? <p className="empty">No tasks yet.</p> : null}
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined}
+              onEditDueDate={onEditDueDate}
+              onDelete={onDelete}
+              onHistory={onHistory}
+            />
           ))}
         </div>
       </SortableContext>
@@ -115,6 +171,11 @@ export function App() {
   const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "normal" | "high">("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const sensors = useSensors(useSensor(PointerSensor));
+  const [menuTask, setMenuTask] = useState<Task | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [history, setHistory] = useState<TaskActivity[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [dueDateDraft, setDueDateDraft] = useState<string>("");
 
   useEffect(() => {
     async function bootstrap() {
@@ -239,6 +300,52 @@ export function App() {
     }
   }
 
+  async function openHistory(task: Task) {
+    if (!accessToken) return;
+    setMenuTask(task);
+    setMenuOpen(true);
+    setHistory([]);
+    setHistoryLoading(true);
+    try {
+      const rows = await getTaskActivity(accessToken, task.id);
+      setHistory(rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load history.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function openDueDate(task: Task) {
+    setMenuTask(task);
+    setDueDateDraft(task.dueDate ?? "");
+    setMenuOpen(true);
+  }
+
+  async function saveDueDate() {
+    if (!accessToken || !menuTask) return;
+    try {
+      const updated = await updateTaskDueDate(accessToken, menuTask.id, dueDateDraft || null);
+      setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
+      setMenuOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update due date.");
+    }
+  }
+
+  async function removeTask(task: Task) {
+    if (!accessToken) return;
+    const snapshot = tasks;
+    setTasks((current) => current.filter((t) => t.id !== task.id));
+    try {
+      await deleteTask(accessToken, task.id);
+      setMenuOpen(false);
+    } catch (err) {
+      setTasks(snapshot);
+      setError(err instanceof Error ? err.message : "Failed to delete task.");
+    }
+  }
+
   if (loading) {
     return <main className="centered">Loading your task board...</main>;
   }
@@ -314,10 +421,66 @@ export function App() {
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={(e) => void onDragEnd(e)}>
         <section className="board">
           {columns.map((column) => (
-            <Column key={column.id} id={column.id} label={column.label} tasks={grouped[column.id]} assigneeById={assigneeById} />
+            <Column
+              key={column.id}
+              id={column.id}
+              label={column.label}
+              tasks={grouped[column.id]}
+              assigneeById={assigneeById}
+              onEditDueDate={openDueDate}
+              onDelete={removeTask}
+              onHistory={openHistory}
+            />
           ))}
         </section>
       </DndContext>
+
+      {menuOpen && menuTask ? (
+        <div className="modal-backdrop" onClick={() => setMenuOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <strong>{menuTask.title}</strong>
+              <button className="ghost" type="button" onClick={() => setMenuOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="modal-section">
+              <label className="label">Update due date</label>
+              <div className="row">
+                <input type="date" value={dueDateDraft} onChange={(e) => setDueDateDraft(e.target.value)} />
+                <button type="button" onClick={() => void saveDueDate()}>
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <div className="modal-section">
+              <label className="label">History</label>
+              {historyLoading ? (
+                <p className="empty">Loading…</p>
+              ) : history.length === 0 ? (
+                <p className="empty">No history yet.</p>
+              ) : (
+                <ul className="history">
+                  {history.map((row) => (
+                    <li key={row.id}>
+                      <span>{formatActivityRow(row)}</span>
+                      <time>{new Date(row.createdAt).toLocaleString()}</time>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="danger" onClick={() => void removeTask(menuTask)}>
+                Delete task
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

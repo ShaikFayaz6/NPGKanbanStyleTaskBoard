@@ -21,6 +21,17 @@ public sealed record CreateTaskRequest(
 
 public sealed record UpdateTaskStatusRequest(string Status);
 
+public sealed record UpdateTaskDueDateRequest(DateOnly? DueDate);
+
+public sealed record TaskActivity(
+    Guid Id,
+    Guid TaskId,
+    string Type,
+    string? FromValue,
+    string? ToValue,
+    DateTime CreatedAt
+);
+
 public sealed record TeamMember(
     Guid Id,
     string Name,

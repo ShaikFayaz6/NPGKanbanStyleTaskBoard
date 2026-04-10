@@ -1,4 +1,4 @@
-import type { CreateTaskRequest, CreateTeamMemberRequest, Task, TaskStatus, TeamMember } from "./types";
+import type { CreateTaskRequest, CreateTeamMemberRequest, Task, TaskActivity, TaskStatus, TeamMember } from "./types";
 
 async function send<T>(path: string, method: string, token: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -32,6 +32,18 @@ export function createTask(token: string, payload: CreateTaskRequest): Promise<T
 
 export function updateTaskStatus(token: string, taskId: string, status: TaskStatus): Promise<Task> {
   return send<Task>(`/api/tasks/${taskId}/status`, "PATCH", token, { status });
+}
+
+export function updateTaskDueDate(token: string, taskId: string, dueDate: string | null): Promise<Task> {
+  return send<Task>(`/api/tasks/${taskId}/due-date`, "PATCH", token, { dueDate });
+}
+
+export function deleteTask(token: string, taskId: string): Promise<void> {
+  return send<void>(`/api/tasks/${taskId}`, "DELETE", token);
+}
+
+export function getTaskActivity(token: string, taskId: string): Promise<TaskActivity[]> {
+  return send<TaskActivity[]>(`/api/tasks/${taskId}/activity`, "GET", token);
 }
 
 export function getTeamMembers(token: string): Promise<TeamMember[]> {

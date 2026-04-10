@@ -30,3 +30,12 @@ export interface CreateTeamMemberRequest {
   name: string;
   color?: string | null;
 }
+
+export interface TaskActivity {
+  id: string;
+  taskId: string;
+  type: "status_changed" | "due_date_changed" | "task_deleted";
+  fromValue: string | null;
+  toValue: string | null;
+  createdAt: string;
+}

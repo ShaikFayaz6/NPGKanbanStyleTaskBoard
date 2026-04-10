@@ -25,6 +25,15 @@ export function createTask(token, payload) {
 export function updateTaskStatus(token, taskId, status) {
     return send(`/api/tasks/${taskId}/status`, "PATCH", token, { status });
 }
+export function updateTaskDueDate(token, taskId, dueDate) {
+    return send(`/api/tasks/${taskId}/due-date`, "PATCH", token, { dueDate });
+}
+export function deleteTask(token, taskId) {
+    return send(`/api/tasks/${taskId}`, "DELETE", token);
+}
+export function getTaskActivity(token, taskId) {
+    return send(`/api/tasks/${taskId}/activity`, "GET", token);
+}
 export function getTeamMembers(token) {
     return send("/api/team-members", "GET", token);
 }

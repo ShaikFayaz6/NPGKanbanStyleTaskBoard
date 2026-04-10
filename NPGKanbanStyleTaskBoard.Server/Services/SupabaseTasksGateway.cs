@@ -47,6 +47,8 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
 
     public async Task<TaskItem> UpdateTaskStatusAsync(string accessToken, Guid taskId, string status, CancellationToken cancellationToken)
     {
+        var before = await GetTaskByIdAsync(accessToken, taskId, cancellationToken);
+
         using var httpRequest = BuildRequest(HttpMethod.Patch, $"/rest/v1/tasks?id=eq.{taskId}&select=id,title,description,priority,due_date,assignee_id,status,created_at", accessToken);
         httpRequest.Headers.Add("Prefer", "return=representation");
         httpRequest.Content = JsonContent.Create(new { status });
@@ -55,7 +57,53 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         await EnsureSuccessAsync(response, cancellationToken);
 
         var rows = await response.Content.ReadFromJsonAsync<List<TaskRow>>(JsonOptions, cancellationToken) ?? [];
-        return MapFromRow(rows.Single());
+        var updated = MapFromRow(rows.Single());
+
+        await CreateActivityAsync(accessToken, taskId, "status_changed", before.Status, updated.Status, cancellationToken);
+        return updated;
+    }
+
+    public async Task<TaskItem> UpdateTaskDueDateAsync(string accessToken, Guid taskId, DateOnly? dueDate, CancellationToken cancellationToken)
+    {
+        var before = await GetTaskByIdAsync(accessToken, taskId, cancellationToken);
+        var dueDateString = dueDate?.ToString("yyyy-MM-dd");
+
+        using var httpRequest = BuildRequest(HttpMethod.Patch, $"/rest/v1/tasks?id=eq.{taskId}&select=id,title,description,priority,due_date,assignee_id,status,created_at", accessToken);
+        httpRequest.Headers.Add("Prefer", "return=representation");
+        httpRequest.Content = JsonContent.Create(new { due_date = dueDateString });
+
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        var rows = await response.Content.ReadFromJsonAsync<List<TaskRow>>(JsonOptions, cancellationToken) ?? [];
+        var updated = MapFromRow(rows.Single());
+
+        await CreateActivityAsync(accessToken, taskId, "due_date_changed", before.DueDate?.ToString("yyyy-MM-dd"), updated.DueDate?.ToString("yyyy-MM-dd"), cancellationToken);
+        return updated;
+    }
+
+    public async Task DeleteTaskAsync(string accessToken, Guid taskId, CancellationToken cancellationToken)
+    {
+        // Keep a minimal activity record before delete (optional best-effort).
+        await CreateActivityAsync(accessToken, taskId, "task_deleted", null, null, cancellationToken);
+
+        using var request = BuildRequest(HttpMethod.Delete, $"/rest/v1/tasks?id=eq.{taskId}", accessToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskActivity>> GetTaskActivityAsync(string accessToken, Guid taskId, CancellationToken cancellationToken)
+    {
+        using var request = BuildRequest(
+            HttpMethod.Get,
+            $"/rest/v1/task_activity?task_id=eq.{taskId}&select=id,task_id,type,from_value,to_value,created_at&order=created_at.desc",
+            accessToken
+        );
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        var rows = await response.Content.ReadFromJsonAsync<List<TaskActivityRow>>(JsonOptions, cancellationToken) ?? [];
+        return rows.Select(r => new TaskActivity(r.Id, r.TaskId, r.Type, r.FromValue, r.ToValue, r.CreatedAt)).ToArray();
     }
 
     public async Task<IReadOnlyList<TeamMember>> GetTeamMembersAsync(string accessToken, CancellationToken cancellationToken)
@@ -136,6 +184,41 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         [property: JsonPropertyName("due_date")] string? DueDate,
         [property: JsonPropertyName("assignee_id")] Guid? AssigneeId,
         [property: JsonPropertyName("status")] string Status,
+        [property: JsonPropertyName("created_at")] DateTime CreatedAt
+    );
+
+    private async Task<TaskItem> GetTaskByIdAsync(string accessToken, Guid taskId, CancellationToken cancellationToken)
+    {
+        using var request = BuildRequest(
+            HttpMethod.Get,
+            $"/rest/v1/tasks?id=eq.{taskId}&select=id,title,description,priority,due_date,assignee_id,status,created_at",
+            accessToken
+        );
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        var rows = await response.Content.ReadFromJsonAsync<List<TaskRow>>(JsonOptions, cancellationToken) ?? [];
+        return MapFromRow(rows.Single());
+    }
+
+    private async Task CreateActivityAsync(string accessToken, Guid taskId, string type, string? fromValue, string? toValue, CancellationToken cancellationToken)
+    {
+        var payload = new { task_id = taskId, type, from_value = fromValue, to_value = toValue };
+
+        using var request = BuildRequest(HttpMethod.Post, "/rest/v1/task_activity?select=id,task_id,type,from_value,to_value,created_at", accessToken);
+        request.Headers.Add("Prefer", "return=minimal");
+        request.Content = JsonContent.Create(payload);
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    private sealed record TaskActivityRow(
+        [property: JsonPropertyName("id")] Guid Id,
+        [property: JsonPropertyName("task_id")] Guid TaskId,
+        [property: JsonPropertyName("type")] string Type,
+        [property: JsonPropertyName("from_value")] string? FromValue,
+        [property: JsonPropertyName("to_value")] string? ToValue,
         [property: JsonPropertyName("created_at")] DateTime CreatedAt
     );
 
