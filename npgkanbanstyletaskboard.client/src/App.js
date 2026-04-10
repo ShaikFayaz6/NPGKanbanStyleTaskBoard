@@ -1,5 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DndContext, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -63,11 +63,42 @@ function TaskCard({ task, assignee, menuOpen, onToggleMenu, onOpenHistory, onReq
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
     const urgency = dueUrgencyBadge(task);
+    const titleRef = useRef(null);
+    const descRef = useRef(null);
+    const [titleTruncated, setTitleTruncated] = useState(false);
+    const [descTruncated, setDescTruncated] = useState(false);
+    const [fullText, setFullText] = useState(null);
+    useLayoutEffect(() => {
+        const el = titleRef.current;
+        if (!el)
+            return;
+        setTitleTruncated(el.scrollWidth > el.clientWidth + 1);
+    }, [task.title]);
+    useLayoutEffect(() => {
+        const el = descRef.current;
+        if (!el) {
+            setDescTruncated(false);
+            return;
+        }
+        setDescTruncated(el.scrollHeight > el.clientHeight + 1);
+    }, [task.description]);
     return (_jsxs("article", { ref: setNodeRef, style: style, className: "task-card", ...attributes, ...listeners, children: [_jsxs("div", { className: "task-card-menu", onPointerDown: (e) => e.stopPropagation(), onClick: (e) => e.stopPropagation(), children: [_jsx("button", { type: "button", className: "kebab", onClick: (e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             onToggleMenu();
-                        }, "aria-expanded": menuOpen, "aria-haspopup": "menu", "aria-label": "Task options", title: "Options", children: "\u22EF" }), menuOpen ? (_jsxs("div", { className: "task-menu-dropdown", role: "menu", children: [_jsx("button", { type: "button", className: "menu-item", role: "menuitem", onClick: () => onOpenHistory(), children: "History" }), _jsx("button", { type: "button", className: "menu-item danger-text", role: "menuitem", onClick: () => onRequestDelete(), children: "Delete" })] })) : null] }), _jsx("h4", { children: task.title }), task.description ? _jsx("p", { children: task.description }) : null, _jsx("div", { className: "task-stage", children: _jsxs("span", { className: "stage-chip", children: ["Stage: ", stageLabel(task.status)] }) }), _jsxs("div", { className: "task-meta", children: [_jsx("span", { className: `priority ${task.priority}`, children: task.priority }), task.dueDate ? _jsxs("span", { children: ["Due ", task.dueDate] }) : null] }), _jsxs("div", { className: "task-meta", children: [urgency ? _jsx("span", { className: `due-badge ${urgency.className}`, children: urgency.label }) : _jsx("span", {}), assignee ? (_jsxs("span", { className: "assignee-pill", children: [_jsx("i", { style: { background: assignee.color } }), assignee.name] })) : (_jsx("span", { className: "assignee-pill empty-assignee", children: "Unassigned" }))] })] }));
+                        }, "aria-expanded": menuOpen, "aria-haspopup": "menu", "aria-label": "Task options", title: "Options", children: "\u22EF" }), menuOpen ? (_jsxs("div", { className: "task-menu-dropdown", role: "menu", children: [_jsx("button", { type: "button", className: "menu-item", role: "menuitem", onClick: () => onOpenHistory(), children: "History" }), _jsx("button", { type: "button", className: "menu-item danger-text", role: "menuitem", onClick: () => onRequestDelete(), children: "Delete" })] })) : null] }), _jsx("h4", { ref: titleRef, className: `task-card-title ${titleTruncated ? "is-truncated" : ""}`, title: titleTruncated ? "Click to read full title" : undefined, onClick: (e) => {
+                    if (!titleTruncated)
+                        return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setFullText({ label: "Task name", text: task.title });
+                }, children: task.title }), task.description ? (_jsx("p", { ref: descRef, className: `task-card-desc ${descTruncated ? "is-truncated" : ""}`, title: descTruncated ? "Click to read full description" : undefined, onClick: (e) => {
+                    if (!descTruncated)
+                        return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setFullText({ label: "Description", text: task.description ?? "" });
+                }, children: task.description })) : null, _jsx("div", { className: "task-stage", children: _jsxs("span", { className: "stage-chip", children: ["Stage: ", stageLabel(task.status)] }) }), _jsxs("div", { className: "task-meta", children: [_jsx("span", { className: `priority ${task.priority}`, children: task.priority }), task.dueDate ? _jsxs("span", { children: ["Due ", task.dueDate] }) : null] }), _jsxs("div", { className: "task-meta", children: [urgency ? _jsx("span", { className: `due-badge ${urgency.className}`, children: urgency.label }) : _jsx("span", {}), assignee ? (_jsxs("span", { className: "assignee-pill", children: [_jsx("i", { style: { background: assignee.color } }), assignee.name] })) : (_jsx("span", { className: "assignee-pill empty-assignee", children: "Unassigned" }))] }), fullText ? (_jsx("div", { className: "text-expand-backdrop", role: "dialog", "aria-modal": "true", "aria-label": fullText.label, onClick: () => setFullText(null), children: _jsxs("div", { className: "text-expand-panel", onClick: (e) => e.stopPropagation(), children: [_jsxs("div", { className: "text-expand-header", children: [_jsx("strong", { children: fullText.label }), _jsx("button", { type: "button", className: "ghost", onClick: () => setFullText(null), children: "Close" })] }), _jsx("p", { className: "text-expand-body", children: fullText.text })] }) })) : null] }));
 }
 function Column({ id, label, tasks, assigneeById, openMenuTaskId, onToggleMenu, onOpenHistory, onRequestDelete }) {
     const { setNodeRef, isOver } = useDroppable({ id });

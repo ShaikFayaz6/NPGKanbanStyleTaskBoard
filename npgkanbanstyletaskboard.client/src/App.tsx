@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -87,6 +87,26 @@ function TaskCard({
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const urgency = dueUrgencyBadge(task);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const descRef = useRef<HTMLParagraphElement>(null);
+  const [titleTruncated, setTitleTruncated] = useState(false);
+  const [descTruncated, setDescTruncated] = useState(false);
+  const [fullText, setFullText] = useState<{ label: string; text: string } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    setTitleTruncated(el.scrollWidth > el.clientWidth + 1);
+  }, [task.title]);
+
+  useLayoutEffect(() => {
+    const el = descRef.current;
+    if (!el) {
+      setDescTruncated(false);
+      return;
+    }
+    setDescTruncated(el.scrollHeight > el.clientHeight + 1);
+  }, [task.description]);
 
   return (
     <article ref={setNodeRef} style={style} className="task-card" {...attributes} {...listeners}>
@@ -121,8 +141,34 @@ function TaskCard({
           </div>
         ) : null}
       </div>
-      <h4>{task.title}</h4>
-      {task.description ? <p>{task.description}</p> : null}
+      <h4
+        ref={titleRef}
+        className={`task-card-title ${titleTruncated ? "is-truncated" : ""}`}
+        title={titleTruncated ? "Click to read full title" : undefined}
+        onClick={(e) => {
+          if (!titleTruncated) return;
+          e.preventDefault();
+          e.stopPropagation();
+          setFullText({ label: "Task name", text: task.title });
+        }}
+      >
+        {task.title}
+      </h4>
+      {task.description ? (
+        <p
+          ref={descRef}
+          className={`task-card-desc ${descTruncated ? "is-truncated" : ""}`}
+          title={descTruncated ? "Click to read full description" : undefined}
+          onClick={(e) => {
+            if (!descTruncated) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setFullText({ label: "Description", text: task.description ?? "" });
+          }}
+        >
+          {task.description}
+        </p>
+      ) : null}
       <div className="task-stage">
         <span className="stage-chip">Stage: {stageLabel(task.status)}</span>
       </div>
@@ -141,6 +187,26 @@ function TaskCard({
           <span className="assignee-pill empty-assignee">Unassigned</span>
         )}
       </div>
+
+      {fullText ? (
+        <div
+          className="text-expand-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={fullText.label}
+          onClick={() => setFullText(null)}
+        >
+          <div className="text-expand-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="text-expand-header">
+              <strong>{fullText.label}</strong>
+              <button type="button" className="ghost" onClick={() => setFullText(null)}>
+                Close
+              </button>
+            </div>
+            <p className="text-expand-body">{fullText.text}</p>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
