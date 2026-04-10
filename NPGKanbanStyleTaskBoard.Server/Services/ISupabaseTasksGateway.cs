@@ -15,6 +15,9 @@ public interface ISupabaseTasksGateway
     Task<TeamMember> CreateTeamMemberAsync(string accessToken, CreateTeamMemberRequest request, CancellationToken cancellationToken);
     Task<IReadOnlyList<LabelItem>> GetLabelsAsync(string accessToken, CancellationToken cancellationToken);
     Task<LabelItem> CreateLabelAsync(string accessToken, CreateLabelRequest request, CancellationToken cancellationToken);
+    Task<IReadOnlyList<TagItem>> GetTagsAsync(string accessToken, CancellationToken cancellationToken);
+    Task<TagItem> CreateTagAsync(string accessToken, CreateTagRequest request, CancellationToken cancellationToken);
+    Task<TaskItem> UpdateTaskTagsAsync(string accessToken, Guid taskId, IReadOnlyList<Guid> tagIds, CancellationToken cancellationToken);
     Task<IReadOnlyList<TaskComment>> GetTaskCommentsAsync(string accessToken, Guid taskId, CancellationToken cancellationToken);
     Task<TaskComment> CreateTaskCommentAsync(string accessToken, Guid taskId, string body, CancellationToken cancellationToken);
 }

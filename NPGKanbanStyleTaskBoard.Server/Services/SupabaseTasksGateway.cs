@@ -26,7 +26,12 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
 
         var taskIds = rows.Select(r => r.Id).ToArray();
         var labelMap = await GetLabelIdsMapAsync(accessToken, taskIds, cancellationToken);
-        return rows.Select(r => ToTaskItem(r, labelMap.TryGetValue(r.Id, out var ids) ? ids : [])).ToArray();
+        var tagMap = await GetTagIdsMapAsync(accessToken, taskIds, cancellationToken);
+        return rows.Select(r => ToTaskItem(
+            r,
+            labelMap.TryGetValue(r.Id, out var labelIds) ? labelIds : [],
+            tagMap.TryGetValue(r.Id, out var tagIds) ? tagIds : []
+        )).ToArray();
     }
 
     public async Task<TaskItem> CreateTaskAsync(string accessToken, CreateTaskRequest request, CancellationToken cancellationToken)
@@ -51,7 +56,9 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         var rows = await response.Content.ReadFromJsonAsync<List<TaskRow>>(JsonOptions, cancellationToken) ?? [];
         var taskId = rows.Single().Id;
         var labelIds = request.LabelIds ?? [];
+        var tagIds = request.TagIds ?? [];
         await ReplaceTaskLabelsAsync(accessToken, taskId, labelIds, cancellationToken);
+        await ReplaceTaskTagsAsync(accessToken, taskId, tagIds, cancellationToken);
         return await GetTaskItemByIdAsync(accessToken, taskId, cancellationToken);
     }
 
@@ -70,7 +77,7 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         var updatedRow = rows.Single();
 
         await CreateActivityAsync(accessToken, taskId, "status_changed", before.Status, updatedRow.Status, cancellationToken);
-        return ToTaskItem(updatedRow, before.LabelIds);
+        return ToTaskItem(updatedRow, before.LabelIds, before.TagIds);
     }
 
     public async Task<TaskItem> UpdateTaskDueDateAsync(string accessToken, Guid taskId, DateOnly? dueDate, CancellationToken cancellationToken)
@@ -89,13 +96,20 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         var updatedRow = rows.Single();
 
         await CreateActivityAsync(accessToken, taskId, "due_date_changed", before.DueDate?.ToString("yyyy-MM-dd"), ParseDueDate(updatedRow.DueDate)?.ToString("yyyy-MM-dd"), cancellationToken);
-        return ToTaskItem(updatedRow, before.LabelIds);
+        return ToTaskItem(updatedRow, before.LabelIds, before.TagIds);
     }
 
     public async Task<TaskItem> UpdateTaskLabelsAsync(string accessToken, Guid taskId, IReadOnlyList<Guid> labelIds, CancellationToken cancellationToken)
     {
         _ = await GetTaskItemByIdAsync(accessToken, taskId, cancellationToken);
         await ReplaceTaskLabelsAsync(accessToken, taskId, labelIds, cancellationToken);
+        return await GetTaskItemByIdAsync(accessToken, taskId, cancellationToken);
+    }
+
+    public async Task<TaskItem> UpdateTaskTagsAsync(string accessToken, Guid taskId, IReadOnlyList<Guid> tagIds, CancellationToken cancellationToken)
+    {
+        _ = await GetTaskItemByIdAsync(accessToken, taskId, cancellationToken);
+        await ReplaceTaskTagsAsync(accessToken, taskId, tagIds, cancellationToken);
         return await GetTaskItemByIdAsync(accessToken, taskId, cancellationToken);
     }
 
@@ -182,6 +196,36 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         return new LabelItem(row.Id, row.Name, row.Color, row.CreatedAt);
     }
 
+    public async Task<IReadOnlyList<TagItem>> GetTagsAsync(string accessToken, CancellationToken cancellationToken)
+    {
+        using var request = BuildRequest(HttpMethod.Get, "/rest/v1/tags?select=id,name,color,created_at&order=name.asc", accessToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        var rows = await response.Content.ReadFromJsonAsync<List<TagRow>>(JsonOptions, cancellationToken) ?? [];
+        return rows.Select(r => new TagItem(r.Id, r.Name, r.Color, r.CreatedAt)).ToArray();
+    }
+
+    public async Task<TagItem> CreateTagAsync(string accessToken, CreateTagRequest request, CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            name = request.Name.Trim(),
+            color = string.IsNullOrWhiteSpace(request.Color) ? "#14b8a6" : request.Color
+        };
+
+        using var httpRequest = BuildRequest(HttpMethod.Post, "/rest/v1/tags?select=id,name,color,created_at", accessToken);
+        httpRequest.Headers.Add("Prefer", "return=representation");
+        httpRequest.Content = JsonContent.Create(payload);
+
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        var rows = await response.Content.ReadFromJsonAsync<List<TagRow>>(JsonOptions, cancellationToken) ?? [];
+        var row = rows.Single();
+        return new TagItem(row.Id, row.Name, row.Color, row.CreatedAt);
+    }
+
     public async Task<IReadOnlyList<TaskComment>> GetTaskCommentsAsync(string accessToken, Guid taskId, CancellationToken cancellationToken)
     {
         using var request = BuildRequest(
@@ -262,6 +306,34 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         return result;
     }
 
+    private async Task<Dictionary<Guid, List<Guid>>> GetTagIdsMapAsync(string accessToken, IReadOnlyList<Guid> taskIds, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<Guid, List<Guid>>();
+        if (taskIds.Count == 0)
+        {
+            return result;
+        }
+
+        var inClause = string.Join(",", taskIds.Select(id => id.ToString()));
+        using var request = BuildRequest(HttpMethod.Get, $"/rest/v1/task_tags?select=task_id,tag_id&task_id=in.({inClause})", accessToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        var rows = await response.Content.ReadFromJsonAsync<List<TaskTagRow>>(JsonOptions, cancellationToken) ?? [];
+        foreach (var row in rows)
+        {
+            if (!result.TryGetValue(row.TaskId, out var list))
+            {
+                list = [];
+                result[row.TaskId] = list;
+            }
+
+            list.Add(row.TagId);
+        }
+
+        return result;
+    }
+
     private async Task ReplaceTaskLabelsAsync(string accessToken, Guid taskId, IReadOnlyList<Guid> labelIds, CancellationToken cancellationToken)
     {
         using var deleteRequest = BuildRequest(HttpMethod.Delete, $"/rest/v1/task_labels?task_id=eq.{taskId}", accessToken);
@@ -282,6 +354,26 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         await EnsureSuccessAsync(insertResponse, cancellationToken);
     }
 
+    private async Task ReplaceTaskTagsAsync(string accessToken, Guid taskId, IReadOnlyList<Guid> tagIds, CancellationToken cancellationToken)
+    {
+        using var deleteRequest = BuildRequest(HttpMethod.Delete, $"/rest/v1/task_tags?task_id=eq.{taskId}", accessToken);
+        using var deleteResponse = await httpClient.SendAsync(deleteRequest, cancellationToken);
+        await EnsureSuccessAsync(deleteResponse, cancellationToken);
+
+        if (tagIds.Count == 0)
+        {
+            return;
+        }
+
+        var payload = tagIds.Select(tid => new { task_id = taskId, tag_id = tid }).ToArray();
+        using var insertRequest = BuildRequest(HttpMethod.Post, "/rest/v1/task_tags?select=task_id", accessToken);
+        insertRequest.Headers.Add("Prefer", "return=minimal");
+        insertRequest.Content = JsonContent.Create(payload);
+
+        using var insertResponse = await httpClient.SendAsync(insertRequest, cancellationToken);
+        await EnsureSuccessAsync(insertResponse, cancellationToken);
+    }
+
     private async Task<TaskItem> GetTaskItemByIdAsync(string accessToken, Guid taskId, CancellationToken cancellationToken)
     {
         using var request = BuildRequest(
@@ -294,12 +386,14 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
 
         var rows = await response.Content.ReadFromJsonAsync<List<TaskRow>>(JsonOptions, cancellationToken) ?? [];
         var row = rows.Single();
-        var map = await GetLabelIdsMapAsync(accessToken, [taskId], cancellationToken);
-        var labelIds = map.TryGetValue(taskId, out var ids) ? ids : [];
-        return ToTaskItem(row, labelIds);
+        var labelMap = await GetLabelIdsMapAsync(accessToken, [taskId], cancellationToken);
+        var tagMap = await GetTagIdsMapAsync(accessToken, [taskId], cancellationToken);
+        var labelIds = labelMap.TryGetValue(taskId, out var lIds) ? lIds : [];
+        var tagIds = tagMap.TryGetValue(taskId, out var tIds) ? tIds : [];
+        return ToTaskItem(row, labelIds, tagIds);
     }
 
-    private static TaskItem ToTaskItem(TaskRow row, IReadOnlyList<Guid> labelIds)
+    private static TaskItem ToTaskItem(TaskRow row, IReadOnlyList<Guid> labelIds, IReadOnlyList<Guid> tagIds)
     {
         var dueDate = ParseDueDate(row.DueDate);
         return new TaskItem(
@@ -311,7 +405,8 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
             row.AssigneeId,
             row.Status,
             row.CreatedAt,
-            labelIds
+            labelIds,
+            tagIds
         );
     }
 
@@ -353,7 +448,19 @@ public sealed class SupabaseTasksGateway(HttpClient httpClient, IOptions<Supabas
         [property: JsonPropertyName("label_id")] Guid LabelId
     );
 
+    private sealed record TaskTagRow(
+        [property: JsonPropertyName("task_id")] Guid TaskId,
+        [property: JsonPropertyName("tag_id")] Guid TagId
+    );
+
     private sealed record LabelRow(
+        [property: JsonPropertyName("id")] Guid Id,
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("color")] string Color,
+        [property: JsonPropertyName("created_at")] DateTime CreatedAt
+    );
+
+    private sealed record TagRow(
         [property: JsonPropertyName("id")] Guid Id,
         [property: JsonPropertyName("name")] string Name,
         [property: JsonPropertyName("color")] string Color,

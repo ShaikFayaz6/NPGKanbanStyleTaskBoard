@@ -111,6 +111,20 @@ public sealed class TasksController(ISupabaseTasksGateway gateway) : ControllerB
         return Ok(updated);
     }
 
+    [HttpPatch("{taskId:guid}/tags")]
+    public async Task<ActionResult<TaskItem>> UpdateTaskTags(Guid taskId, [FromBody] UpdateTaskTagsRequest request, CancellationToken cancellationToken)
+    {
+        var accessToken = ReadAccessToken();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return Unauthorized("Missing bearer token.");
+        }
+
+        var tagIds = request.TagIds ?? [];
+        var updated = await gateway.UpdateTaskTagsAsync(accessToken, taskId, tagIds, cancellationToken);
+        return Ok(updated);
+    }
+
     [HttpGet("{taskId:guid}/comments")]
     public async Task<ActionResult<IReadOnlyList<TaskComment>>> GetTaskComments(Guid taskId, CancellationToken cancellationToken)
     {

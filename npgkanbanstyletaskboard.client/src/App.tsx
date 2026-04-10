@@ -3,11 +3,13 @@ import { DndContext, DragEndEvent, PointerSensor, closestCorners, useDroppable, 
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  createTag,
   createLabel,
   createTask,
   createTaskComment,
   createTeamMember,
   deleteTask,
+  getTags,
   getLabels,
   getTaskActivity,
   getTaskComments,
@@ -15,10 +17,11 @@ import {
   getTeamMembers,
   updateTaskDueDate,
   updateTaskLabels,
+  updateTaskTags,
   updateTaskStatus
 } from "./api";
 import { supabase } from "./supabase";
-import type { Label, Task, TaskActivity, TaskComment, TaskStatus, TeamMember } from "./types";
+import type { Label, Tag, Task, TaskActivity, TaskComment, TaskStatus, TeamMember } from "./types";
 
 const columns: Array<{ id: TaskStatus; label: string }> = [
   { id: "todo", label: "To Do" },
@@ -88,6 +91,8 @@ type TaskCardMenuView = "main" | "comment" | "tags" | "tags-new" | "labels" | "l
 function TaskCard({
   task,
   taskLabels,
+  taskTags,
+  tags,
   labels,
   assignee,
   menuOpen,
@@ -95,11 +100,15 @@ function TaskCard({
   onOpenHistory,
   onRequestDelete,
   onQuickComment,
+  onAttachTag,
   onAttachLabel,
+  onCreateTagForTask,
   onCreateLabelForTask
 }: {
   task: Task;
   taskLabels: Label[];
+  taskTags: Tag[];
+  tags: Tag[];
   labels: Label[];
   assignee?: TeamMember;
   menuOpen: boolean;
@@ -107,7 +116,9 @@ function TaskCard({
   onOpenHistory: () => void;
   onRequestDelete: () => void;
   onQuickComment: (taskId: string, body: string) => Promise<void>;
+  onAttachTag: (taskId: string, tagId: string) => Promise<void>;
   onAttachLabel: (taskId: string, labelId: string) => Promise<void>;
+  onCreateTagForTask: (taskId: string, name: string, color: string) => Promise<void>;
   onCreateLabelForTask: (taskId: string, name: string, color: string) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
@@ -121,7 +132,7 @@ function TaskCard({
   const [menuView, setMenuView] = useState<TaskCardMenuView>("main");
   const [commentDraft, setCommentDraft] = useState("");
   const [createNameDraft, setCreateNameDraft] = useState("");
-  const [createColorDraft, setCreateColorDraft] = useState("#6366f1");
+  const [createColorDraft, setCreateColorDraft] = useState("#14b8a6");
   const [menuBusy, setMenuBusy] = useState(false);
   const prevMenuOpen = useRef(false);
 
@@ -130,7 +141,7 @@ function TaskCard({
       setMenuView("main");
       setCommentDraft("");
       setCreateNameDraft("");
-      setCreateColorDraft("#6366f1");
+      setCreateColorDraft("#14b8a6");
     }
     prevMenuOpen.current = menuOpen;
   }, [menuOpen]);
@@ -236,31 +247,39 @@ function TaskCard({
                   ← Back
                 </button>
                 <p className="menu-subtitle">Choose a tag</p>
-                {labels.length === 0 ? <p className="menu-empty-hint">No tags yet.</p> : null}
-                {labels.map((lb) => (
+                {tags.length === 0 ? <p className="menu-empty-hint">No tags yet.</p> : null}
+                {tags.map((tg) => (
                   <button
-                    key={lb.id}
+                    key={tg.id}
                     type="button"
                     className="menu-item menu-pick-item"
-                    disabled={menuBusy || task.labelIds.includes(lb.id)}
+                    disabled={menuBusy || task.tagIds.includes(tg.id)}
                     onClick={() => {
                       void (async () => {
                         setMenuBusy(true);
                         try {
-                          await onAttachLabel(task.id, lb.id);
+                          await onAttachTag(task.id, tg.id);
                         } finally {
                           setMenuBusy(false);
                         }
                       })();
                     }}
                   >
-                    <span className="label-chip mini" style={{ borderColor: lb.color, color: lb.color }}>
-                      {lb.name}
+                    <span className="label-chip mini tag-chip" style={{ borderColor: tg.color, color: tg.color }}>
+                      {tg.name}
                     </span>
-                    {task.labelIds.includes(lb.id) ? <span className="menu-picked"> (on task)</span> : null}
+                    {task.tagIds.includes(tg.id) ? <span className="menu-picked"> (on task)</span> : null}
                   </button>
                 ))}
-                <button type="button" className="menu-item menu-create-end" onClick={() => setMenuView("tags-new")}>
+                <button
+                  type="button"
+                  className="menu-item menu-create-end"
+                  onClick={() => {
+                    setCreateNameDraft("");
+                    setCreateColorDraft("#14b8a6");
+                    setMenuView("tags-new");
+                  }}
+                >
                   + Create new tag
                 </button>
               </div>
@@ -295,9 +314,9 @@ function TaskCard({
                     void (async () => {
                       setMenuBusy(true);
                       try {
-                        await onCreateLabelForTask(task.id, createNameDraft, createColorDraft);
+                        await onCreateTagForTask(task.id, createNameDraft, createColorDraft);
                         setCreateNameDraft("");
-                        setCreateColorDraft("#6366f1");
+                        setCreateColorDraft("#14b8a6");
                       } finally {
                         setMenuBusy(false);
                       }
@@ -339,7 +358,15 @@ function TaskCard({
                     {task.labelIds.includes(lb.id) ? <span className="menu-picked"> (on task)</span> : null}
                   </button>
                 ))}
-                <button type="button" className="menu-item menu-create-end" onClick={() => setMenuView("labels-new")}>
+                <button
+                  type="button"
+                  className="menu-item menu-create-end"
+                  onClick={() => {
+                    setCreateNameDraft("");
+                    setCreateColorDraft("#6366f1");
+                    setMenuView("labels-new");
+                  }}
+                >
                   + Create new label
                 </button>
               </div>
@@ -427,6 +454,15 @@ function TaskCard({
           ))}
         </div>
       ) : null}
+      {taskTags.length > 0 ? (
+        <div className="task-label-chips" aria-label="Tags">
+          {taskTags.map((tg) => (
+            <span key={tg.id} className="label-chip tag-chip" style={{ borderColor: tg.color, color: tg.color }}>
+              #{tg.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="task-stage">
         <span className="stage-chip">Stage: {stageLabel(task.status)}</span>
       </div>
@@ -474,28 +510,36 @@ function Column({
   label,
   tasks,
   assigneeById,
+  tagById,
   labelById,
+  tags,
   labels,
   openMenuTaskId,
   onToggleMenu,
   onOpenHistory,
   onRequestDelete,
   onQuickComment,
+  onAttachTag,
   onAttachLabel,
+  onCreateTagForTask,
   onCreateLabelForTask
 }: {
   id: TaskStatus;
   label: string;
   tasks: Task[];
   assigneeById: Record<string, TeamMember>;
+  tagById: Record<string, Tag>;
   labelById: Record<string, Label>;
+  tags: Tag[];
   labels: Label[];
   openMenuTaskId: string | null;
   onToggleMenu: (taskId: string) => void;
   onOpenHistory: (task: Task) => void;
   onRequestDelete: (task: Task) => void;
   onQuickComment: (taskId: string, body: string) => Promise<void>;
+  onAttachTag: (taskId: string, tagId: string) => Promise<void>;
   onAttachLabel: (taskId: string, labelId: string) => Promise<void>;
+  onCreateTagForTask: (taskId: string, name: string, color: string) => Promise<void>;
   onCreateLabelForTask: (taskId: string, name: string, color: string) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
@@ -511,6 +555,8 @@ function Column({
               key={task.id}
               task={task}
               taskLabels={task.labelIds.map((lid) => labelById[lid]).filter((x): x is Label => !!x)}
+              taskTags={task.tagIds.map((tid) => tagById[tid]).filter((x): x is Tag => !!x)}
+              tags={tags}
               labels={labels}
               assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined}
               menuOpen={openMenuTaskId === task.id}
@@ -518,7 +564,9 @@ function Column({
               onOpenHistory={() => onOpenHistory(task)}
               onRequestDelete={() => onRequestDelete(task)}
               onQuickComment={onQuickComment}
+              onAttachTag={onAttachTag}
               onAttachLabel={onAttachLabel}
+              onCreateTagForTask={onCreateTagForTask}
               onCreateLabelForTask={onCreateLabelForTask}
             />
           ))}
@@ -536,6 +584,7 @@ export function App() {
   const [accessToken, setAccessToken] = useState<string>("");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -544,11 +593,14 @@ export function App() {
   const [priority, setPriority] = useState<"low" | "normal" | "high">("normal");
   const [dueDate, setDueDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [createTaskTagIds, setCreateTaskTagIds] = useState<string[]>([]);
   const [createTaskLabelIds, setCreateTaskLabelIds] = useState<string[]>([]);
   const [memberName, setMemberName] = useState("");
   const [memberColor, setMemberColor] = useState("#6366f1");
   const [labelName, setLabelName] = useState("");
   const [labelColor, setLabelColor] = useState("#6366f1");
+  const [tagName, setTagName] = useState("");
+  const [tagColor, setTagColor] = useState("#14b8a6");
   const [searchText, setSearchText] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "normal" | "high">("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
@@ -595,13 +647,15 @@ export function App() {
           throw new Error("Guest session could not be created (no access token returned).");
         }
         setAccessToken(token);
-        const [loadedTasks, loadedMembers, loadedLabels] = await Promise.all([
+        const [loadedTasks, loadedMembers, loadedTags, loadedLabels] = await Promise.all([
           getTasks(token),
           getTeamMembers(token),
+          getTags(token),
           getLabels(token)
         ]);
         setTasks(loadedTasks);
         setTeamMembers(loadedMembers);
+        setTags(loadedTags);
         setLabels(loadedLabels);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Failed to initialize board.");
@@ -619,6 +673,13 @@ export function App() {
       return acc;
     }, {});
   }, [teamMembers]);
+
+  const tagById = useMemo(() => {
+    return tags.reduce<Record<string, Tag>>((acc, t) => {
+      acc[t.id] = t;
+      return acc;
+    }, {});
+  }, [tags]);
 
   const labelById = useMemo(() => {
     return labels.reduce<Record<string, Label>>((acc, lb) => {
@@ -668,7 +729,8 @@ export function App() {
         priority,
         dueDate: dueDate || null,
         assigneeId: assigneeId || null,
-        labelIds: createTaskLabelIds.length > 0 ? createTaskLabelIds : null
+        labelIds: createTaskLabelIds.length > 0 ? createTaskLabelIds : null,
+        tagIds: createTaskTagIds.length > 0 ? createTaskTagIds : null
       });
       setTasks((current) => [created, ...current]);
       setTitle("");
@@ -676,6 +738,7 @@ export function App() {
       setDueDate("");
       setPriority("normal");
       setAssigneeId("");
+      setCreateTaskTagIds([]);
       setCreateTaskLabelIds([]);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to create task.");
@@ -707,6 +770,20 @@ export function App() {
       setLabelColor("#6366f1");
     } catch (labelErr) {
       setError(labelErr instanceof Error ? labelErr.message : "Failed to create label.");
+    }
+  }
+
+  async function onCreateTag(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!tagName.trim() || !accessToken) return;
+
+    try {
+      const created = await createTag(accessToken, { name: tagName.trim(), color: tagColor });
+      setTags((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setTagName("");
+      setTagColor("#14b8a6");
+    } catch (tagErr) {
+      setError(tagErr instanceof Error ? tagErr.message : "Failed to create tag.");
     }
   }
 
@@ -810,6 +887,36 @@ export function App() {
     }
   }
 
+  async function attachTagToTaskFromCard(taskId: string, tagId: string) {
+    if (!accessToken) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.tagIds.includes(tagId)) return;
+    try {
+      const updated = await updateTaskTags(accessToken, taskId, [...task.tagIds, tagId]);
+      setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
+      setHistoryTask((t) => (t && t.id === taskId ? updated : t));
+      setOpenMenuTaskId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add tag.");
+    }
+  }
+
+  async function createTagForTaskFromCard(taskId: string, name: string, color: string) {
+    if (!accessToken || !name.trim()) return;
+    try {
+      const created = await createTag(accessToken, { name: name.trim(), color });
+      setTags((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      const task = tasks.find((t) => t.id === taskId);
+      const nextIds = [...(task?.tagIds ?? []), created.id];
+      const updated = await updateTaskTags(accessToken, taskId, nextIds);
+      setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
+      setHistoryTask((t) => (t && t.id === taskId ? updated : t));
+      setOpenMenuTaskId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create tag.");
+    }
+  }
+
   async function createLabelForTaskFromCard(taskId: string, name: string, color: string) {
     if (!accessToken || !name.trim()) return;
     try {
@@ -891,6 +998,25 @@ export function App() {
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             <button type="submit">Create Task</button>
           </div>
+          {tags.length > 0 ? (
+            <fieldset className="label-pick-fieldset">
+              <legend>Tags (optional)</legend>
+              <div className="label-pick-row">
+                {tags.map((tg) => (
+                  <label key={tg.id} className="label-pick-item">
+                    <input
+                      type="checkbox"
+                      checked={createTaskTagIds.includes(tg.id)}
+                      onChange={() => setCreateTaskTagIds((prev) => toggleLabelId(prev, tg.id))}
+                    />
+                    <span className="label-chip mini tag-chip" style={{ borderColor: tg.color, color: tg.color }}>
+                      #{tg.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           {labels.length > 0 ? (
             <fieldset className="label-pick-fieldset">
               <legend>Labels (optional)</legend>
@@ -919,6 +1045,16 @@ export function App() {
           <div className="row">
             <input type="color" value={memberColor} onChange={(e) => setMemberColor(e.target.value)} />
             <button type="submit">Add Member</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="composer">
+        <form onSubmit={onCreateTag}>
+          <input value={tagName} onChange={(e) => setTagName(e.target.value)} placeholder="New tag name" maxLength={40} required />
+          <div className="row">
+            <input type="color" value={tagColor} onChange={(e) => setTagColor(e.target.value)} />
+            <button type="submit">Add Tag</button>
           </div>
         </form>
       </section>
@@ -977,14 +1113,18 @@ export function App() {
               label={column.label}
               tasks={grouped[column.id]}
               assigneeById={assigneeById}
+              tagById={tagById}
               labelById={labelById}
+              tags={tags}
               labels={labels}
               openMenuTaskId={openMenuTaskId}
               onToggleMenu={toggleTaskMenu}
               onOpenHistory={openHistoryModal}
               onRequestDelete={requestDeleteFromMenu}
               onQuickComment={postQuickCommentFromCard}
+              onAttachTag={attachTagToTaskFromCard}
               onAttachLabel={attachLabelToTaskFromCard}
+              onCreateTagForTask={createTagForTaskFromCard}
               onCreateLabelForTask={createLabelForTaskFromCard}
             />
           ))}

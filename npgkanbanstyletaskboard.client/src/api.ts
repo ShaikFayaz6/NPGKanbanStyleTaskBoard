@@ -1,8 +1,10 @@
 import type {
+  CreateTagRequest,
   CreateLabelRequest,
   CreateTaskRequest,
   CreateTeamMemberRequest,
   Label,
+  Tag,
   Task,
   TaskActivity,
   TaskComment,
@@ -33,7 +35,7 @@ async function send<T>(path: string, method: string, token: string, body?: unkno
 }
 
 function normalizeTask(task: Task): Task {
-  return { ...task, labelIds: task.labelIds ?? [] };
+  return { ...task, labelIds: task.labelIds ?? [], tagIds: task.tagIds ?? [] };
 }
 
 export function getTasks(token: string): Promise<Task[]> {
@@ -54,6 +56,10 @@ export function updateTaskDueDate(token: string, taskId: string, dueDate: string
 
 export function updateTaskLabels(token: string, taskId: string, labelIds: string[]): Promise<Task> {
   return send<Task>(`/api/tasks/${taskId}/labels`, "PATCH", token, { labelIds }).then(normalizeTask);
+}
+
+export function updateTaskTags(token: string, taskId: string, tagIds: string[]): Promise<Task> {
+  return send<Task>(`/api/tasks/${taskId}/tags`, "PATCH", token, { tagIds }).then(normalizeTask);
 }
 
 export function deleteTask(token: string, taskId: string): Promise<void> {
@@ -86,4 +92,12 @@ export function getLabels(token: string): Promise<Label[]> {
 
 export function createLabel(token: string, payload: CreateLabelRequest): Promise<Label> {
   return send<Label>("/api/labels", "POST", token, payload);
+}
+
+export function getTags(token: string): Promise<Tag[]> {
+  return send<Tag[]>("/api/tags", "GET", token);
+}
+
+export function createTag(token: string, payload: CreateTagRequest): Promise<Tag> {
+  return send<Tag>("/api/tags", "POST", token, payload);
 }

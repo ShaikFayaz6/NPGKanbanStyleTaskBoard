@@ -10,6 +10,7 @@ export interface Task {
   status: TaskStatus;
   createdAt: string;
   labelIds: string[];
+  tagIds: string[];
 }
 
 export interface CreateTaskRequest {
@@ -19,6 +20,7 @@ export interface CreateTaskRequest {
   dueDate?: string | null;
   assigneeId?: string | null;
   labelIds?: string[] | null;
+  tagIds?: string[] | null;
 }
 
 export interface TeamMember {
@@ -41,6 +43,18 @@ export interface Label {
 }
 
 export interface CreateLabelRequest {
+  name: string;
+  color?: string | null;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+  createdAt: string;
+}
+
+export interface CreateTagRequest {
   name: string;
   color?: string | null;
 }

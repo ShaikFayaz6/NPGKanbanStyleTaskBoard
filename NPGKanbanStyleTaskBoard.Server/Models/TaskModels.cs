@@ -9,7 +9,8 @@ public sealed record TaskItem(
     Guid? AssigneeId,
     string Status,
     DateTime CreatedAt,
-    IReadOnlyList<Guid> LabelIds
+    IReadOnlyList<Guid> LabelIds,
+    IReadOnlyList<Guid> TagIds
 );
 
 public sealed record CreateTaskRequest(
@@ -18,7 +19,8 @@ public sealed record CreateTaskRequest(
     string? Priority,
     DateOnly? DueDate,
     Guid? AssigneeId,
-    IReadOnlyList<Guid>? LabelIds
+    IReadOnlyList<Guid>? LabelIds,
+    IReadOnlyList<Guid>? TagIds
 );
 
 public sealed record UpdateTaskStatusRequest(string Status);
@@ -26,6 +28,7 @@ public sealed record UpdateTaskStatusRequest(string Status);
 public sealed record UpdateTaskDueDateRequest(DateOnly? DueDate);
 
 public sealed record UpdateTaskLabelsRequest(IReadOnlyList<Guid> LabelIds);
+public sealed record UpdateTaskTagsRequest(IReadOnlyList<Guid> TagIds);
 
 public sealed record TaskActivity(
     Guid Id,
@@ -48,6 +51,8 @@ public sealed record CreateTeamMemberRequest(string Name, string? Color);
 public sealed record LabelItem(Guid Id, string Name, string Color, DateTime CreatedAt);
 
 public sealed record CreateLabelRequest(string Name, string? Color);
+public sealed record TagItem(Guid Id, string Name, string Color, DateTime CreatedAt);
+public sealed record CreateTagRequest(string Name, string? Color);
 
 public sealed record TaskComment(Guid Id, Guid TaskId, string Body, DateTime CreatedAt);
 

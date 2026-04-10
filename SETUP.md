@@ -98,10 +98,24 @@ create table if not exists public.labels (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
+create table if not exists public.tags (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(trim(name)) > 0 and char_length(name) <= 40),
+  color text not null default '#14b8a6',
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
 create table if not exists public.task_labels (
   task_id uuid not null references public.tasks(id) on delete cascade,
   label_id uuid not null references public.labels(id) on delete cascade,
   primary key (task_id, label_id)
+);
+
+create table if not exists public.task_tags (
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  tag_id uuid not null references public.tags(id) on delete cascade,
+  primary key (task_id, tag_id)
 );
 
 create table if not exists public.task_comments (
@@ -113,10 +127,13 @@ create table if not exists public.task_comments (
 );
 
 alter table public.labels alter column user_id set default auth.uid();
+alter table public.tags alter column user_id set default auth.uid();
 alter table public.task_comments alter column user_id set default auth.uid();
 
 alter table public.labels enable row level security;
+alter table public.tags enable row level security;
 alter table public.task_labels enable row level security;
+alter table public.task_tags enable row level security;
 alter table public.task_comments enable row level security;
 
 drop policy if exists "labels_select_own" on public.labels;
@@ -135,6 +152,22 @@ drop policy if exists "labels_delete_own" on public.labels;
 create policy "labels_delete_own"
 on public.labels for delete using (auth.uid() = user_id);
 
+drop policy if exists "tags_select_own" on public.tags;
+create policy "tags_select_own"
+on public.tags for select using (auth.uid() = user_id);
+
+drop policy if exists "tags_insert_own" on public.tags;
+create policy "tags_insert_own"
+on public.tags for insert with check (auth.uid() = user_id);
+
+drop policy if exists "tags_update_own" on public.tags;
+create policy "tags_update_own"
+on public.tags for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "tags_delete_own" on public.tags;
+create policy "tags_delete_own"
+on public.tags for delete using (auth.uid() = user_id);
+
 drop policy if exists "task_labels_select_via_task" on public.task_labels;
 create policy "task_labels_select_via_task"
 on public.task_labels for select
@@ -151,6 +184,24 @@ with check (
 drop policy if exists "task_labels_delete_via_task" on public.task_labels;
 create policy "task_labels_delete_via_task"
 on public.task_labels for delete
+using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+
+drop policy if exists "task_tags_select_via_task" on public.task_tags;
+create policy "task_tags_select_via_task"
+on public.task_tags for select
+using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+
+drop policy if exists "task_tags_insert_via_task" on public.task_tags;
+create policy "task_tags_insert_via_task"
+on public.task_tags for insert
+with check (
+  exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid())
+  and exists (select 1 from public.tags tg where tg.id = tag_id and tg.user_id = auth.uid())
+);
+
+drop policy if exists "task_tags_delete_via_task" on public.task_tags;
+create policy "task_tags_delete_via_task"
+on public.task_tags for delete
 using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
 
 drop policy if exists "task_comments_select_via_task" on public.task_comments;
@@ -171,6 +222,7 @@ create index if not exists idx_tasks_user_status on public.tasks(user_id, status
 create index if not exists idx_team_members_user_created_at on public.team_members(user_id, created_at asc);
 create index if not exists idx_task_activity_task_created_at on public.task_activity(task_id, created_at desc);
 create index if not exists idx_labels_user_name on public.labels(user_id, name);
+create index if not exists idx_tags_user_name on public.tags(user_id, name);
 create index if not exists idx_task_comments_task_created_at on public.task_comments(task_id, created_at asc);
 ```
 

@@ -17,7 +17,7 @@ async function send(path, method, token, body) {
     return (await response.json());
 }
 function normalizeTask(task) {
-    return { ...task, labelIds: task.labelIds ?? [] };
+    return { ...task, labelIds: task.labelIds ?? [], tagIds: task.tagIds ?? [] };
 }
 export function getTasks(token) {
     return send("/api/tasks", "GET", token).then((rows) => rows.map(normalizeTask));
@@ -33,6 +33,9 @@ export function updateTaskDueDate(token, taskId, dueDate) {
 }
 export function updateTaskLabels(token, taskId, labelIds) {
     return send(`/api/tasks/${taskId}/labels`, "PATCH", token, { labelIds }).then(normalizeTask);
+}
+export function updateTaskTags(token, taskId, tagIds) {
+    return send(`/api/tasks/${taskId}/tags`, "PATCH", token, { tagIds }).then(normalizeTask);
 }
 export function deleteTask(token, taskId) {
     return send(`/api/tasks/${taskId}`, "DELETE", token);
@@ -57,4 +60,10 @@ export function getLabels(token) {
 }
 export function createLabel(token, payload) {
     return send("/api/labels", "POST", token, payload);
+}
+export function getTags(token) {
+    return send("/api/tags", "GET", token);
+}
+export function createTag(token, payload) {
+    return send("/api/tags", "POST", token, payload);
 }

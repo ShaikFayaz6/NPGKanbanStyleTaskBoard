@@ -235,7 +235,7 @@ input[type="color"] {
   min-height: 280px;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .dropzone {
@@ -263,7 +263,7 @@ input[type="color"] {
   min-width: 0;
   max-width: 100%;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .task-card-title {
@@ -378,6 +378,7 @@ input[type="color"] {
   border: 1px solid #29314a;
   background: rgba(15, 23, 42, 0.98);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  z-index: 50;
 }
 
 .task-menu-dropdown-wide {
@@ -390,6 +391,8 @@ input[type="color"] {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.15rem 0.1rem 0.35rem;
+  max-height: min(55vh, 360px);
+  overflow-y: auto;
 }
 
 .task-menu-scroll {
@@ -466,6 +469,10 @@ input[type="color"] {
   color: #c4b5fd;
 }
 
+.tag-chip {
+  border-style: dashed;
+}
+
 .task-menu-subpanel input[type="text"],
 .task-menu-subpanel input[type="color"] {
   width: 100%;
@@ -522,6 +529,8 @@ input[type="color"] {
   border: 1px solid #29314a;
   border-radius: 14px;
   padding: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
 }
 
 .modal-wide {
@@ -561,6 +570,8 @@ input[type="color"] {
   margin: 0;
   display: grid;
   gap: 0.55rem;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .history li {
