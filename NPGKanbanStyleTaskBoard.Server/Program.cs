@@ -29,6 +29,9 @@ if (string.IsNullOrEmpty(port))
 
 app.UseAuthorization();
 
+// Hosted API has no SPA files in wwwroot; "/" would otherwise 404. Swagger is the quick health/demo entry.
+app.MapGet("/", () => Results.Redirect("/swagger"));
+
 app.MapControllers();
 
 app.MapFallbackToFile("/index.html");

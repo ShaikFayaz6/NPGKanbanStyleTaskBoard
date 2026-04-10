@@ -137,6 +137,6 @@ Production: set `Supabase__Url` and `Supabase__AnonKey` on the host (e.g. Render
 
 Deploy the **API first** (Docker — root `Dockerfile`), then point the frontend at it with `npgkanbanstyletaskboard.client/vercel.json` rewrites to `/api/*`.
 
-**Render (Docker):** runtime Docker, Dockerfile path `Dockerfile`, empty build/start override. Env: `Supabase__Url`, `Supabase__AnonKey`, `ASPNETCORE_ENVIRONMENT=Production`.
+**Render (Docker):** runtime Docker, Dockerfile path `Dockerfile`, empty build/start override. Env: `Supabase__Url`, `Supabase__AnonKey`, `ASPNETCORE_ENVIRONMENT=Production`. The API root `/` redirects to `/swagger` (the Docker image does not bundle the React `index.html` in `wwwroot` — the live UI is on Vercel).
 
 **Vercel:** root directory `npgkanbanstyletaskboard.client`, framework Vite, build `npm run build`, output `dist`. Set the same `VITE_*` vars as local `.env`. Set `vercel.json` `destination` to your Render API base URL.
