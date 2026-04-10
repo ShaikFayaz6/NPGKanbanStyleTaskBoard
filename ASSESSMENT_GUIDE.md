@@ -205,14 +205,5 @@ If you still see “Using Node.js”, create a **new** Web Service and pick **Do
 6. Commit and push `vercel.json` + redeploy Vercel.
 7. Open your **Vercel URL** — the app calls `/api/...`, which Vercel proxies to Render.
 
-**Secrets:** only set keys in Render and Vercel dashboards. Do not commit `.env` or real keys in `vercel.json` (only the public API hostname).
 
-## 7) Final Submission Document Checklist
 
-- Architecture and design decisions
-- Live app URL
-- GitHub repo URL
-- Full SQL schema (from section 1)
-- Local setup instructions (sections 2-4)
-- Advanced features implemented
-- Tradeoffs and future improvements
