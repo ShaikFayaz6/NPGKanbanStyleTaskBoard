@@ -380,6 +380,97 @@ input[type="color"] {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
+.task-menu-dropdown-wide {
+  min-width: 260px;
+  max-width: min(320px, calc(100vw - 2rem));
+}
+
+.task-menu-subpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.15rem 0.1rem 0.35rem;
+}
+
+.task-menu-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.menu-back {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: #a5b4fc;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+}
+
+.menu-back:hover {
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.menu-subtitle {
+  margin: 0;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.menu-empty-hint {
+  margin: 0.25rem 0;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.menu-field-label {
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.task-menu-textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-size: 0.88rem;
+}
+
+.menu-primary-btn {
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.menu-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.menu-pick-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menu-picked {
+  font-size: 0.72rem;
+  opacity: 0.65;
+}
+
+.menu-create-end {
+  margin-top: 0.25rem;
+  border-top: 1px solid #29314a;
+  padding-top: 0.45rem;
+  font-weight: 600;
+  color: #c4b5fd;
+}
+
+.task-menu-subpanel input[type="text"],
+.task-menu-subpanel input[type="color"] {
+  width: 100%;
+}
+
 .menu-item {
   display: block;
   width: 100%;

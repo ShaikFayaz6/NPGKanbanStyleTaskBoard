@@ -83,22 +83,32 @@ function buildTimeline(task: Task, rows: TaskActivity[]): TimelineEntry[] {
   return [created, ...activitySorted.map((row) => ({ kind: "activity" as const, row }))];
 }
 
+type TaskCardMenuView = "main" | "comment" | "tags" | "tags-new" | "labels" | "labels-new";
+
 function TaskCard({
   task,
   taskLabels,
+  labels,
   assignee,
   menuOpen,
   onToggleMenu,
   onOpenHistory,
-  onRequestDelete
+  onRequestDelete,
+  onQuickComment,
+  onAttachLabel,
+  onCreateLabelForTask
 }: {
   task: Task;
   taskLabels: Label[];
+  labels: Label[];
   assignee?: TeamMember;
   menuOpen: boolean;
   onToggleMenu: () => void;
   onOpenHistory: () => void;
   onRequestDelete: () => void;
+  onQuickComment: (taskId: string, body: string) => Promise<void>;
+  onAttachLabel: (taskId: string, labelId: string) => Promise<void>;
+  onCreateLabelForTask: (taskId: string, name: string, color: string) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -108,6 +118,22 @@ function TaskCard({
   const [titleTruncated, setTitleTruncated] = useState(false);
   const [descTruncated, setDescTruncated] = useState(false);
   const [fullText, setFullText] = useState<{ label: string; text: string } | null>(null);
+  const [menuView, setMenuView] = useState<TaskCardMenuView>("main");
+  const [commentDraft, setCommentDraft] = useState("");
+  const [createNameDraft, setCreateNameDraft] = useState("");
+  const [createColorDraft, setCreateColorDraft] = useState("#6366f1");
+  const [menuBusy, setMenuBusy] = useState(false);
+  const prevMenuOpen = useRef(false);
+
+  useEffect(() => {
+    if (menuOpen && !prevMenuOpen.current) {
+      setMenuView("main");
+      setCommentDraft("");
+      setCreateNameDraft("");
+      setCreateColorDraft("#6366f1");
+    }
+    prevMenuOpen.current = menuOpen;
+  }, [menuOpen]);
 
   useLayoutEffect(() => {
     const el = titleRef.current;
@@ -147,13 +173,220 @@ function TaskCard({
           ⋯
         </button>
         {menuOpen ? (
-          <div className="task-menu-dropdown" role="menu">
-            <button type="button" className="menu-item" role="menuitem" onClick={() => onOpenHistory()}>
-              History
-            </button>
-            <button type="button" className="menu-item danger-text" role="menuitem" onClick={() => onRequestDelete()}>
-              Delete
-            </button>
+          <div className="task-menu-dropdown task-menu-dropdown-wide" role="menu" onPointerDown={(e) => e.stopPropagation()}>
+            {menuView === "main" ? (
+              <>
+                <button type="button" className="menu-item" role="menuitem" onClick={() => onOpenHistory()}>
+                  History
+                </button>
+                <button type="button" className="menu-item" role="menuitem" onClick={() => setMenuView("comment")}>
+                  Add comment
+                </button>
+                <button type="button" className="menu-item" role="menuitem" onClick={() => setMenuView("tags")}>
+                  Add tag
+                </button>
+                <button type="button" className="menu-item" role="menuitem" onClick={() => setMenuView("labels")}>
+                  Add label
+                </button>
+                <button type="button" className="menu-item danger-text" role="menuitem" onClick={() => onRequestDelete()}>
+                  Delete
+                </button>
+              </>
+            ) : null}
+
+            {menuView === "comment" ? (
+              <div className="task-menu-subpanel">
+                <button type="button" className="menu-back" onClick={() => setMenuView("main")}>
+                  ← Back
+                </button>
+                <label className="menu-field-label">Comment</label>
+                <textarea
+                  className="task-menu-textarea"
+                  value={commentDraft}
+                  onChange={(e) => setCommentDraft(e.target.value)}
+                  placeholder="Write a comment…"
+                  maxLength={4000}
+                  rows={4}
+                  disabled={menuBusy}
+                />
+                <button
+                  type="button"
+                  className="menu-primary-btn"
+                  disabled={menuBusy || !commentDraft.trim()}
+                  onClick={() => {
+                    void (async () => {
+                      setMenuBusy(true);
+                      try {
+                        await onQuickComment(task.id, commentDraft);
+                        setCommentDraft("");
+                      } finally {
+                        setMenuBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {menuBusy ? "Saving…" : "Save comment"}
+                </button>
+              </div>
+            ) : null}
+
+            {menuView === "tags" ? (
+              <div className="task-menu-subpanel task-menu-scroll">
+                <button type="button" className="menu-back" onClick={() => setMenuView("main")}>
+                  ← Back
+                </button>
+                <p className="menu-subtitle">Choose a tag</p>
+                {labels.length === 0 ? <p className="menu-empty-hint">No tags yet.</p> : null}
+                {labels.map((lb) => (
+                  <button
+                    key={lb.id}
+                    type="button"
+                    className="menu-item menu-pick-item"
+                    disabled={menuBusy || task.labelIds.includes(lb.id)}
+                    onClick={() => {
+                      void (async () => {
+                        setMenuBusy(true);
+                        try {
+                          await onAttachLabel(task.id, lb.id);
+                        } finally {
+                          setMenuBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    <span className="label-chip mini" style={{ borderColor: lb.color, color: lb.color }}>
+                      {lb.name}
+                    </span>
+                    {task.labelIds.includes(lb.id) ? <span className="menu-picked"> (on task)</span> : null}
+                  </button>
+                ))}
+                <button type="button" className="menu-item menu-create-end" onClick={() => setMenuView("tags-new")}>
+                  + Create new tag
+                </button>
+              </div>
+            ) : null}
+
+            {menuView === "tags-new" ? (
+              <div className="task-menu-subpanel">
+                <button type="button" className="menu-back" onClick={() => setMenuView("tags")}>
+                  ← Back
+                </button>
+                <label className="menu-field-label">New tag name</label>
+                <input
+                  type="text"
+                  value={createNameDraft}
+                  onChange={(e) => setCreateNameDraft(e.target.value)}
+                  placeholder="Tag name"
+                  maxLength={40}
+                  disabled={menuBusy}
+                />
+                <label className="menu-field-label">Color</label>
+                <input
+                  type="color"
+                  value={createColorDraft}
+                  onChange={(e) => setCreateColorDraft(e.target.value)}
+                  disabled={menuBusy}
+                />
+                <button
+                  type="button"
+                  className="menu-primary-btn"
+                  disabled={menuBusy || !createNameDraft.trim()}
+                  onClick={() => {
+                    void (async () => {
+                      setMenuBusy(true);
+                      try {
+                        await onCreateLabelForTask(task.id, createNameDraft, createColorDraft);
+                        setCreateNameDraft("");
+                        setCreateColorDraft("#6366f1");
+                      } finally {
+                        setMenuBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {menuBusy ? "Saving…" : "Save tag"}
+                </button>
+              </div>
+            ) : null}
+
+            {menuView === "labels" ? (
+              <div className="task-menu-subpanel task-menu-scroll">
+                <button type="button" className="menu-back" onClick={() => setMenuView("main")}>
+                  ← Back
+                </button>
+                <p className="menu-subtitle">Choose a label</p>
+                {labels.length === 0 ? <p className="menu-empty-hint">No labels yet.</p> : null}
+                {labels.map((lb) => (
+                  <button
+                    key={`lb-${lb.id}`}
+                    type="button"
+                    className="menu-item menu-pick-item"
+                    disabled={menuBusy || task.labelIds.includes(lb.id)}
+                    onClick={() => {
+                      void (async () => {
+                        setMenuBusy(true);
+                        try {
+                          await onAttachLabel(task.id, lb.id);
+                        } finally {
+                          setMenuBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    <span className="label-chip mini" style={{ borderColor: lb.color, color: lb.color }}>
+                      {lb.name}
+                    </span>
+                    {task.labelIds.includes(lb.id) ? <span className="menu-picked"> (on task)</span> : null}
+                  </button>
+                ))}
+                <button type="button" className="menu-item menu-create-end" onClick={() => setMenuView("labels-new")}>
+                  + Create new label
+                </button>
+              </div>
+            ) : null}
+
+            {menuView === "labels-new" ? (
+              <div className="task-menu-subpanel">
+                <button type="button" className="menu-back" onClick={() => setMenuView("labels")}>
+                  ← Back
+                </button>
+                <label className="menu-field-label">New label name</label>
+                <input
+                  type="text"
+                  value={createNameDraft}
+                  onChange={(e) => setCreateNameDraft(e.target.value)}
+                  placeholder="Label name"
+                  maxLength={40}
+                  disabled={menuBusy}
+                />
+                <label className="menu-field-label">Color</label>
+                <input
+                  type="color"
+                  value={createColorDraft}
+                  onChange={(e) => setCreateColorDraft(e.target.value)}
+                  disabled={menuBusy}
+                />
+                <button
+                  type="button"
+                  className="menu-primary-btn"
+                  disabled={menuBusy || !createNameDraft.trim()}
+                  onClick={() => {
+                    void (async () => {
+                      setMenuBusy(true);
+                      try {
+                        await onCreateLabelForTask(task.id, createNameDraft, createColorDraft);
+                        setCreateNameDraft("");
+                        setCreateColorDraft("#6366f1");
+                      } finally {
+                        setMenuBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {menuBusy ? "Saving…" : "Save label"}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -242,20 +475,28 @@ function Column({
   tasks,
   assigneeById,
   labelById,
+  labels,
   openMenuTaskId,
   onToggleMenu,
   onOpenHistory,
-  onRequestDelete
+  onRequestDelete,
+  onQuickComment,
+  onAttachLabel,
+  onCreateLabelForTask
 }: {
   id: TaskStatus;
   label: string;
   tasks: Task[];
   assigneeById: Record<string, TeamMember>;
   labelById: Record<string, Label>;
+  labels: Label[];
   openMenuTaskId: string | null;
   onToggleMenu: (taskId: string) => void;
   onOpenHistory: (task: Task) => void;
   onRequestDelete: (task: Task) => void;
+  onQuickComment: (taskId: string, body: string) => Promise<void>;
+  onAttachLabel: (taskId: string, labelId: string) => Promise<void>;
+  onCreateLabelForTask: (taskId: string, name: string, color: string) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -270,11 +511,15 @@ function Column({
               key={task.id}
               task={task}
               taskLabels={task.labelIds.map((lid) => labelById[lid]).filter((x): x is Label => !!x)}
+              labels={labels}
               assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined}
               menuOpen={openMenuTaskId === task.id}
               onToggleMenu={() => onToggleMenu(task.id)}
               onOpenHistory={() => onOpenHistory(task)}
               onRequestDelete={() => onRequestDelete(task)}
+              onQuickComment={onQuickComment}
+              onAttachLabel={onAttachLabel}
+              onCreateLabelForTask={onCreateLabelForTask}
             />
           ))}
         </div>
@@ -541,6 +786,46 @@ export function App() {
     }
   }
 
+  async function postQuickCommentFromCard(taskId: string, body: string) {
+    if (!accessToken || !body.trim()) return;
+    try {
+      await createTaskComment(accessToken, taskId, body.trim());
+      setOpenMenuTaskId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save comment.");
+    }
+  }
+
+  async function attachLabelToTaskFromCard(taskId: string, labelId: string) {
+    if (!accessToken) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.labelIds.includes(labelId)) return;
+    try {
+      const updated = await updateTaskLabels(accessToken, taskId, [...task.labelIds, labelId]);
+      setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
+      setHistoryTask((t) => (t && t.id === taskId ? updated : t));
+      setOpenMenuTaskId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add tag/label.");
+    }
+  }
+
+  async function createLabelForTaskFromCard(taskId: string, name: string, color: string) {
+    if (!accessToken || !name.trim()) return;
+    try {
+      const created = await createLabel(accessToken, { name: name.trim(), color });
+      setLabels((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      const task = tasks.find((t) => t.id === taskId);
+      const nextIds = [...(task?.labelIds ?? []), created.id];
+      const updated = await updateTaskLabels(accessToken, taskId, nextIds);
+      setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
+      setHistoryTask((t) => (t && t.id === taskId ? updated : t));
+      setOpenMenuTaskId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create tag/label.");
+    }
+  }
+
   async function saveDueDate() {
     if (!accessToken || !historyTask) return;
     try {
@@ -693,10 +978,14 @@ export function App() {
               tasks={grouped[column.id]}
               assigneeById={assigneeById}
               labelById={labelById}
+              labels={labels}
               openMenuTaskId={openMenuTaskId}
               onToggleMenu={toggleTaskMenu}
               onOpenHistory={openHistoryModal}
               onRequestDelete={requestDeleteFromMenu}
+              onQuickComment={postQuickCommentFromCard}
+              onAttachLabel={attachLabelToTaskFromCard}
+              onCreateLabelForTask={createLabelForTaskFromCard}
             />
           ))}
         </section>
