@@ -2,9 +2,23 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragEndEvent, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { createTask, createTeamMember, deleteTask, getTaskActivity, getTasks, getTeamMembers, updateTaskDueDate, updateTaskStatus } from "./api";
+import {
+  createLabel,
+  createTask,
+  createTaskComment,
+  createTeamMember,
+  deleteTask,
+  getLabels,
+  getTaskActivity,
+  getTaskComments,
+  getTasks,
+  getTeamMembers,
+  updateTaskDueDate,
+  updateTaskLabels,
+  updateTaskStatus
+} from "./api";
 import { supabase } from "./supabase";
-import type { Task, TaskActivity, TaskStatus, TeamMember } from "./types";
+import type { Label, Task, TaskActivity, TaskComment, TaskStatus, TeamMember } from "./types";
 
 const columns: Array<{ id: TaskStatus; label: string }> = [
   { id: "todo", label: "To Do" },
@@ -71,6 +85,7 @@ function buildTimeline(task: Task, rows: TaskActivity[]): TimelineEntry[] {
 
 function TaskCard({
   task,
+  taskLabels,
   assignee,
   menuOpen,
   onToggleMenu,
@@ -78,6 +93,7 @@ function TaskCard({
   onRequestDelete
 }: {
   task: Task;
+  taskLabels: Label[];
   assignee?: TeamMember;
   menuOpen: boolean;
   onToggleMenu: () => void;
@@ -169,6 +185,15 @@ function TaskCard({
           {task.description}
         </p>
       ) : null}
+      {taskLabels.length > 0 ? (
+        <div className="task-label-chips" aria-label="Labels">
+          {taskLabels.map((lb) => (
+            <span key={lb.id} className="label-chip" style={{ borderColor: lb.color, color: lb.color }}>
+              {lb.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="task-stage">
         <span className="stage-chip">Stage: {stageLabel(task.status)}</span>
       </div>
@@ -216,6 +241,7 @@ function Column({
   label,
   tasks,
   assigneeById,
+  labelById,
   openMenuTaskId,
   onToggleMenu,
   onOpenHistory,
@@ -225,6 +251,7 @@ function Column({
   label: string;
   tasks: Task[];
   assigneeById: Record<string, TeamMember>;
+  labelById: Record<string, Label>;
   openMenuTaskId: string | null;
   onToggleMenu: (taskId: string) => void;
   onOpenHistory: (task: Task) => void;
@@ -242,6 +269,7 @@ function Column({
             <TaskCard
               key={task.id}
               task={task}
+              taskLabels={task.labelIds.map((lid) => labelById[lid]).filter((x): x is Label => !!x)}
               assignee={task.assigneeId ? assigneeById[task.assigneeId] : undefined}
               menuOpen={openMenuTaskId === task.id}
               onToggleMenu={() => onToggleMenu(task.id)}
@@ -255,10 +283,15 @@ function Column({
   );
 }
 
+function toggleLabelId(selected: string[], id: string): string[] {
+  return selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
+}
+
 export function App() {
   const [accessToken, setAccessToken] = useState<string>("");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [title, setTitle] = useState("");
@@ -266,11 +299,15 @@ export function App() {
   const [priority, setPriority] = useState<"low" | "normal" | "high">("normal");
   const [dueDate, setDueDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
+  const [createTaskLabelIds, setCreateTaskLabelIds] = useState<string[]>([]);
   const [memberName, setMemberName] = useState("");
   const [memberColor, setMemberColor] = useState("#6366f1");
+  const [labelName, setLabelName] = useState("");
+  const [labelColor, setLabelColor] = useState("#6366f1");
   const [searchText, setSearchText] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "normal" | "high">("all");
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [labelFilter, setLabelFilter] = useState<string>("all");
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 10 }
@@ -281,6 +318,11 @@ export function App() {
   const [history, setHistory] = useState<TaskActivity[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [dueDateDraft, setDueDateDraft] = useState<string>("");
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newCommentBody, setNewCommentBody] = useState("");
+  const [labelDraft, setLabelDraft] = useState<string[]>([]);
+  const [labelsSaving, setLabelsSaving] = useState(false);
   const menuCloseRef = useRef<(() => void) | null>(null);
   menuCloseRef.current = () => setOpenMenuTaskId(null);
 
@@ -308,9 +350,14 @@ export function App() {
           throw new Error("Guest session could not be created (no access token returned).");
         }
         setAccessToken(token);
-        const [loadedTasks, loadedMembers] = await Promise.all([getTasks(token), getTeamMembers(token)]);
+        const [loadedTasks, loadedMembers, loadedLabels] = await Promise.all([
+          getTasks(token),
+          getTeamMembers(token),
+          getLabels(token)
+        ]);
         setTasks(loadedTasks);
         setTeamMembers(loadedMembers);
+        setLabels(loadedLabels);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Failed to initialize board.");
       } finally {
@@ -328,14 +375,23 @@ export function App() {
     }, {});
   }, [teamMembers]);
 
+  const labelById = useMemo(() => {
+    return labels.reduce<Record<string, Label>>((acc, lb) => {
+      acc[lb.id] = lb;
+      return acc;
+    }, {});
+  }, [labels]);
+
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       const searchMatch = task.title.toLowerCase().includes(searchText.toLowerCase());
       const priorityMatch = priorityFilter === "all" || task.priority === priorityFilter;
       const assigneeMatch = assigneeFilter === "all" || (assigneeFilter === "unassigned" ? !task.assigneeId : task.assigneeId === assigneeFilter);
-      return searchMatch && priorityMatch && assigneeMatch;
+      const labelMatch =
+        labelFilter === "all" || (task.labelIds ?? []).includes(labelFilter);
+      return searchMatch && priorityMatch && assigneeMatch && labelMatch;
     });
-  }, [tasks, searchText, priorityFilter, assigneeFilter]);
+  }, [tasks, searchText, priorityFilter, assigneeFilter, labelFilter]);
 
   const grouped = useMemo(() => {
     return columns.reduce<Record<TaskStatus, Task[]>>(
@@ -365,9 +421,9 @@ export function App() {
         title: title.trim(),
         description: description.trim() || null,
         priority,
-        dueDate: dueDate || null
-        ,
-        assigneeId: assigneeId || null
+        dueDate: dueDate || null,
+        assigneeId: assigneeId || null,
+        labelIds: createTaskLabelIds.length > 0 ? createTaskLabelIds : null
       });
       setTasks((current) => [created, ...current]);
       setTitle("");
@@ -375,6 +431,7 @@ export function App() {
       setDueDate("");
       setPriority("normal");
       setAssigneeId("");
+      setCreateTaskLabelIds([]);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to create task.");
     }
@@ -391,6 +448,20 @@ export function App() {
       setMemberColor("#6366f1");
     } catch (memberError) {
       setError(memberError instanceof Error ? memberError.message : "Failed to create team member.");
+    }
+  }
+
+  async function onCreateLabel(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!labelName.trim() || !accessToken) return;
+
+    try {
+      const created = await createLabel(accessToken, { name: labelName.trim(), color: labelColor });
+      setLabels((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setLabelName("");
+      setLabelColor("#6366f1");
+    } catch (labelErr) {
+      setError(labelErr instanceof Error ? labelErr.message : "Failed to create label.");
     }
   }
 
@@ -424,15 +495,49 @@ export function App() {
     setOpenMenuTaskId(null);
     setHistoryTask(task);
     setDueDateDraft(task.dueDate ?? "");
+    setLabelDraft([...(task.labelIds ?? [])]);
+    setNewCommentBody("");
     setHistory([]);
+    setComments([]);
     setHistoryLoading(true);
+    setCommentsLoading(true);
     try {
-      const rows = await getTaskActivity(accessToken, task.id);
+      const [rows, commentRows] = await Promise.all([
+        getTaskActivity(accessToken, task.id),
+        getTaskComments(accessToken, task.id)
+      ]);
       setHistory(rows);
+      setComments(commentRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load history.");
     } finally {
       setHistoryLoading(false);
+      setCommentsLoading(false);
+    }
+  }
+
+  async function saveTaskLabels() {
+    if (!accessToken || !historyTask) return;
+    setLabelsSaving(true);
+    try {
+      const updated = await updateTaskLabels(accessToken, historyTask.id, labelDraft);
+      setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
+      setHistoryTask(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update labels.");
+    } finally {
+      setLabelsSaving(false);
+    }
+  }
+
+  async function submitComment() {
+    if (!accessToken || !historyTask || !newCommentBody.trim()) return;
+    try {
+      const created = await createTaskComment(accessToken, historyTask.id, newCommentBody.trim());
+      setComments((current) => [...current, created]);
+      setNewCommentBody("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add comment.");
     }
   }
 
@@ -501,6 +606,25 @@ export function App() {
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             <button type="submit">Create Task</button>
           </div>
+          {labels.length > 0 ? (
+            <fieldset className="label-pick-fieldset">
+              <legend>Labels (optional)</legend>
+              <div className="label-pick-row">
+                {labels.map((lb) => (
+                  <label key={lb.id} className="label-pick-item">
+                    <input
+                      type="checkbox"
+                      checked={createTaskLabelIds.includes(lb.id)}
+                      onChange={() => setCreateTaskLabelIds((prev) => toggleLabelId(prev, lb.id))}
+                    />
+                    <span className="label-chip mini" style={{ borderColor: lb.color, color: lb.color }}>
+                      {lb.name}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
         </form>
       </section>
 
@@ -510,6 +634,16 @@ export function App() {
           <div className="row">
             <input type="color" value={memberColor} onChange={(e) => setMemberColor(e.target.value)} />
             <button type="submit">Add Member</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="composer">
+        <form onSubmit={onCreateLabel}>
+          <input value={labelName} onChange={(e) => setLabelName(e.target.value)} placeholder="New label name" maxLength={40} required />
+          <div className="row">
+            <input type="color" value={labelColor} onChange={(e) => setLabelColor(e.target.value)} />
+            <button type="submit">Add Label</button>
           </div>
         </form>
       </section>
@@ -537,6 +671,14 @@ export function App() {
             </option>
           ))}
         </select>
+        <select value={labelFilter} onChange={(e) => setLabelFilter(e.target.value)}>
+          <option value="all">All Labels</option>
+          {labels.map((lb) => (
+            <option key={lb.id} value={lb.id}>
+              {lb.name}
+            </option>
+          ))}
+        </select>
       </section>
 
       {error ? <p className="error">{error}</p> : null}
@@ -550,6 +692,7 @@ export function App() {
               label={column.label}
               tasks={grouped[column.id]}
               assigneeById={assigneeById}
+              labelById={labelById}
               openMenuTaskId={openMenuTaskId}
               onToggleMenu={toggleTaskMenu}
               onOpenHistory={openHistoryModal}
@@ -575,6 +718,59 @@ export function App() {
                 <input type="date" value={dueDateDraft} onChange={(e) => setDueDateDraft(e.target.value)} />
                 <button type="button" onClick={() => void saveDueDate()}>
                   Save
+                </button>
+              </div>
+            </div>
+
+            {labels.length > 0 ? (
+              <div className="modal-section">
+                <label className="label">Labels on this task</label>
+                <div className="label-pick-row modal-label-pick">
+                  {labels.map((lb) => (
+                    <label key={lb.id} className="label-pick-item">
+                      <input
+                        type="checkbox"
+                        checked={labelDraft.includes(lb.id)}
+                        onChange={() => setLabelDraft((prev) => toggleLabelId(prev, lb.id))}
+                      />
+                      <span className="label-chip mini" style={{ borderColor: lb.color, color: lb.color }}>
+                        {lb.name}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <button type="button" className="ghost" disabled={labelsSaving} onClick={() => void saveTaskLabels()}>
+                  {labelsSaving ? "Saving…" : "Save labels"}
+                </button>
+              </div>
+            ) : null}
+
+            <div className="modal-section">
+              <label className="label">Comments</label>
+              {commentsLoading ? (
+                <p className="empty">Loading comments…</p>
+              ) : comments.length === 0 ? (
+                <p className="empty">No comments yet.</p>
+              ) : (
+                <ul className="comments-list">
+                  {comments.map((c) => (
+                    <li key={c.id} className="comment-item">
+                      <p className="comment-body">{c.body}</p>
+                      <time className="comment-time">{new Date(c.createdAt).toLocaleString()}</time>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="row comment-compose">
+                <textarea
+                  value={newCommentBody}
+                  onChange={(e) => setNewCommentBody(e.target.value)}
+                  placeholder="Write a comment…"
+                  maxLength={4000}
+                  rows={3}
+                />
+                <button type="button" onClick={() => void submitComment()} disabled={!newCommentBody.trim()}>
+                  Post
                 </button>
               </div>
             </div>

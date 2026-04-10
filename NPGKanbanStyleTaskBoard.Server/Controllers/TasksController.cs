@@ -97,6 +97,56 @@ public sealed class TasksController(ISupabaseTasksGateway gateway) : ControllerB
         return Ok(activity);
     }
 
+    [HttpPatch("{taskId:guid}/labels")]
+    public async Task<ActionResult<TaskItem>> UpdateTaskLabels(Guid taskId, [FromBody] UpdateTaskLabelsRequest request, CancellationToken cancellationToken)
+    {
+        var accessToken = ReadAccessToken();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return Unauthorized("Missing bearer token.");
+        }
+
+        var labelIds = request.LabelIds ?? [];
+        var updated = await gateway.UpdateTaskLabelsAsync(accessToken, taskId, labelIds, cancellationToken);
+        return Ok(updated);
+    }
+
+    [HttpGet("{taskId:guid}/comments")]
+    public async Task<ActionResult<IReadOnlyList<TaskComment>>> GetTaskComments(Guid taskId, CancellationToken cancellationToken)
+    {
+        var accessToken = ReadAccessToken();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return Unauthorized("Missing bearer token.");
+        }
+
+        var comments = await gateway.GetTaskCommentsAsync(accessToken, taskId, cancellationToken);
+        return Ok(comments);
+    }
+
+    [HttpPost("{taskId:guid}/comments")]
+    public async Task<ActionResult<TaskComment>> CreateTaskComment(Guid taskId, [FromBody] CreateTaskCommentRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Body))
+        {
+            return BadRequest("Comment body is required.");
+        }
+
+        if (request.Body.Trim().Length > 4000)
+        {
+            return BadRequest("Comment is too long.");
+        }
+
+        var accessToken = ReadAccessToken();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return Unauthorized("Missing bearer token.");
+        }
+
+        var created = await gateway.CreateTaskCommentAsync(accessToken, taskId, request.Body, cancellationToken);
+        return Ok(created);
+    }
+
     private string ReadAccessToken()
     {
         var authHeader = HttpContext.Request.Headers.Authorization.ToString();

@@ -85,6 +85,116 @@ input[type="color"] {
   gap: 0.6rem;
 }
 
+.task-label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+}
+
+.label-chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.label-chip.mini {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+}
+
+.label-pick-fieldset {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #29314a;
+  border-radius: 12px;
+}
+
+.label-pick-fieldset legend {
+  padding: 0 0.35rem;
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
+.label-pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+  align-items: center;
+}
+
+.modal-label-pick {
+  margin-bottom: 0.55rem;
+}
+
+.label-pick-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.label-pick-item input {
+  width: auto;
+  height: auto;
+  margin: 0;
+}
+
+.modal-section > button.ghost {
+  width: auto;
+  margin-top: 0.25rem;
+}
+
+.comments-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.65rem;
+  display: grid;
+  gap: 0.5rem;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.comment-item {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #29314a;
+  border-radius: 10px;
+  background: rgba(19, 28, 49, 0.7);
+}
+
+.comment-body {
+  margin: 0 0 0.35rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.88rem;
+  color: #e5e7eb;
+}
+
+.comment-time {
+  font-size: 0.72rem;
+  opacity: 0.65;
+}
+
+.comment-compose {
+  align-items: flex-end;
+}
+
+.comment-compose textarea {
+  min-height: 72px;
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 520px) {
+  .comment-compose textarea {
+    grid-column: 1 / -2;
+  }
+}
+
 .filters {
   margin: 1rem 0;
   display: grid;

@@ -1,4 +1,14 @@
-import type { CreateTaskRequest, CreateTeamMemberRequest, Task, TaskActivity, TaskStatus, TeamMember } from "./types";
+import type {
+  CreateLabelRequest,
+  CreateTaskRequest,
+  CreateTeamMemberRequest,
+  Label,
+  Task,
+  TaskActivity,
+  TaskComment,
+  TaskStatus,
+  TeamMember
+} from "./types";
 
 async function send<T>(path: string, method: string, token: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -22,20 +32,28 @@ async function send<T>(path: string, method: string, token: string, body?: unkno
   return (await response.json()) as T;
 }
 
+function normalizeTask(task: Task): Task {
+  return { ...task, labelIds: task.labelIds ?? [] };
+}
+
 export function getTasks(token: string): Promise<Task[]> {
-  return send<Task[]>("/api/tasks", "GET", token);
+  return send<Task[]>("/api/tasks", "GET", token).then((rows) => rows.map(normalizeTask));
 }
 
 export function createTask(token: string, payload: CreateTaskRequest): Promise<Task> {
-  return send<Task>("/api/tasks", "POST", token, payload);
+  return send<Task>("/api/tasks", "POST", token, payload).then(normalizeTask);
 }
 
 export function updateTaskStatus(token: string, taskId: string, status: TaskStatus): Promise<Task> {
-  return send<Task>(`/api/tasks/${taskId}/status`, "PATCH", token, { status });
+  return send<Task>(`/api/tasks/${taskId}/status`, "PATCH", token, { status }).then(normalizeTask);
 }
 
 export function updateTaskDueDate(token: string, taskId: string, dueDate: string | null): Promise<Task> {
-  return send<Task>(`/api/tasks/${taskId}/due-date`, "PATCH", token, { dueDate });
+  return send<Task>(`/api/tasks/${taskId}/due-date`, "PATCH", token, { dueDate }).then(normalizeTask);
+}
+
+export function updateTaskLabels(token: string, taskId: string, labelIds: string[]): Promise<Task> {
+  return send<Task>(`/api/tasks/${taskId}/labels`, "PATCH", token, { labelIds }).then(normalizeTask);
 }
 
 export function deleteTask(token: string, taskId: string): Promise<void> {
@@ -46,10 +64,26 @@ export function getTaskActivity(token: string, taskId: string): Promise<TaskActi
   return send<TaskActivity[]>(`/api/tasks/${taskId}/activity`, "GET", token);
 }
 
+export function getTaskComments(token: string, taskId: string): Promise<TaskComment[]> {
+  return send<TaskComment[]>(`/api/tasks/${taskId}/comments`, "GET", token);
+}
+
+export function createTaskComment(token: string, taskId: string, body: string): Promise<TaskComment> {
+  return send<TaskComment>(`/api/tasks/${taskId}/comments`, "POST", token, { body });
+}
+
 export function getTeamMembers(token: string): Promise<TeamMember[]> {
   return send<TeamMember[]>("/api/team-members", "GET", token);
 }
 
 export function createTeamMember(token: string, payload: CreateTeamMemberRequest): Promise<TeamMember> {
   return send<TeamMember>("/api/team-members", "POST", token, payload);
+}
+
+export function getLabels(token: string): Promise<Label[]> {
+  return send<Label[]>("/api/labels", "GET", token);
+}
+
+export function createLabel(token: string, payload: CreateLabelRequest): Promise<Label> {
+  return send<Label>("/api/labels", "POST", token, payload);
 }

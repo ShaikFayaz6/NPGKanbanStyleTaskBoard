@@ -89,10 +89,89 @@ drop policy if exists "task_activity_insert_own" on public.task_activity;
 create policy "task_activity_insert_own"
 on public.task_activity for insert with check (auth.uid() = user_id);
 
+-- Labels, task–label links, and comments (run this block on existing projects that only had the tables above)
+create table if not exists public.labels (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(trim(name)) > 0 and char_length(name) <= 40),
+  color text not null default '#6366f1',
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.task_labels (
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  label_id uuid not null references public.labels(id) on delete cascade,
+  primary key (task_id, label_id)
+);
+
+create table if not exists public.task_comments (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  body text not null check (char_length(trim(body)) > 0 and char_length(body) <= 4000),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+alter table public.labels alter column user_id set default auth.uid();
+alter table public.task_comments alter column user_id set default auth.uid();
+
+alter table public.labels enable row level security;
+alter table public.task_labels enable row level security;
+alter table public.task_comments enable row level security;
+
+drop policy if exists "labels_select_own" on public.labels;
+create policy "labels_select_own"
+on public.labels for select using (auth.uid() = user_id);
+
+drop policy if exists "labels_insert_own" on public.labels;
+create policy "labels_insert_own"
+on public.labels for insert with check (auth.uid() = user_id);
+
+drop policy if exists "labels_update_own" on public.labels;
+create policy "labels_update_own"
+on public.labels for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "labels_delete_own" on public.labels;
+create policy "labels_delete_own"
+on public.labels for delete using (auth.uid() = user_id);
+
+drop policy if exists "task_labels_select_via_task" on public.task_labels;
+create policy "task_labels_select_via_task"
+on public.task_labels for select
+using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+
+drop policy if exists "task_labels_insert_via_task" on public.task_labels;
+create policy "task_labels_insert_via_task"
+on public.task_labels for insert
+with check (
+  exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid())
+  and exists (select 1 from public.labels l where l.id = label_id and l.user_id = auth.uid())
+);
+
+drop policy if exists "task_labels_delete_via_task" on public.task_labels;
+create policy "task_labels_delete_via_task"
+on public.task_labels for delete
+using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+
+drop policy if exists "task_comments_select_via_task" on public.task_comments;
+create policy "task_comments_select_via_task"
+on public.task_comments for select
+using (exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid()));
+
+drop policy if exists "task_comments_insert_via_task" on public.task_comments;
+create policy "task_comments_insert_via_task"
+on public.task_comments for insert
+with check (
+  exists (select 1 from public.tasks t where t.id = task_id and t.user_id = auth.uid())
+  and auth.uid() = user_id
+);
+
 create index if not exists idx_tasks_user_created_at on public.tasks(user_id, created_at desc);
 create index if not exists idx_tasks_user_status on public.tasks(user_id, status);
 create index if not exists idx_team_members_user_created_at on public.team_members(user_id, created_at asc);
 create index if not exists idx_task_activity_task_created_at on public.task_activity(task_id, created_at desc);
+create index if not exists idx_labels_user_name on public.labels(user_id, name);
+create index if not exists idx_task_comments_task_created_at on public.task_comments(task_id, created_at asc);
 ```
 
 ## 2) Frontend environment
@@ -131,6 +210,8 @@ Production: set `Supabase__Url` and `Supabase__AnonKey` on the host (e.g. Render
 - Search and filters  
 - Guest anonymous sessions; data scoped per user via RLS  
 - Task history (activity) and delete with confirmation  
+- Labels / tags on tasks and optional label filter  
+- Task comments (thread in the history panel)  
 - Responsive UI  
 
 ## 6) Hosting (example: Render API + Vercel UI)

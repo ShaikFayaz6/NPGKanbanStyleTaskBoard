@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DndContext, PointerSensor, closestCorners, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { createTask, createTeamMember, deleteTask, getTaskActivity, getTasks, getTeamMembers, updateTaskDueDate, updateTaskStatus } from "./api";
+import { createLabel, createTask, createTaskComment, createTeamMember, deleteTask, getLabels, getTaskActivity, getTaskComments, getTasks, getTeamMembers, updateTaskDueDate, updateTaskLabels, updateTaskStatus } from "./api";
 import { supabase } from "./supabase";
 const columns = [
     { id: "todo", label: "To Do" },
@@ -59,7 +59,7 @@ function buildTimeline(task, rows) {
     const activitySorted = [...rows].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     return [created, ...activitySorted.map((row) => ({ kind: "activity", row }))];
 }
-function TaskCard({ task, assignee, menuOpen, onToggleMenu, onOpenHistory, onRequestDelete }) {
+function TaskCard({ task, taskLabels, assignee, menuOpen, onToggleMenu, onOpenHistory, onRequestDelete }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: task.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
     const urgency = dueUrgencyBadge(task);
@@ -98,16 +98,20 @@ function TaskCard({ task, assignee, menuOpen, onToggleMenu, onOpenHistory, onReq
                     e.preventDefault();
                     e.stopPropagation();
                     setFullText({ label: "Description", text: task.description ?? "" });
-                }, children: task.description })) : null, _jsx("div", { className: "task-stage", children: _jsxs("span", { className: "stage-chip", children: ["Stage: ", stageLabel(task.status)] }) }), _jsxs("div", { className: "task-meta", children: [_jsx("span", { className: `priority ${task.priority}`, children: task.priority }), task.dueDate ? _jsxs("span", { children: ["Due ", task.dueDate] }) : null] }), _jsxs("div", { className: "task-meta", children: [urgency ? _jsx("span", { className: `due-badge ${urgency.className}`, children: urgency.label }) : _jsx("span", {}), assignee ? (_jsxs("span", { className: "assignee-pill", children: [_jsx("i", { style: { background: assignee.color } }), assignee.name] })) : (_jsx("span", { className: "assignee-pill empty-assignee", children: "Unassigned" }))] }), fullText ? (_jsx("div", { className: "text-expand-backdrop", role: "dialog", "aria-modal": "true", "aria-label": fullText.label, onClick: () => setFullText(null), children: _jsxs("div", { className: "text-expand-panel", onClick: (e) => e.stopPropagation(), children: [_jsxs("div", { className: "text-expand-header", children: [_jsx("strong", { children: fullText.label }), _jsx("button", { type: "button", className: "ghost", onClick: () => setFullText(null), children: "Close" })] }), _jsx("p", { className: "text-expand-body", children: fullText.text })] }) })) : null] }));
+                }, children: task.description })) : null, taskLabels.length > 0 ? (_jsx("div", { className: "task-label-chips", "aria-label": "Labels", children: taskLabels.map((lb) => (_jsx("span", { className: "label-chip", style: { borderColor: lb.color, color: lb.color }, children: lb.name }, lb.id))) })) : null, _jsx("div", { className: "task-stage", children: _jsxs("span", { className: "stage-chip", children: ["Stage: ", stageLabel(task.status)] }) }), _jsxs("div", { className: "task-meta", children: [_jsx("span", { className: `priority ${task.priority}`, children: task.priority }), task.dueDate ? _jsxs("span", { children: ["Due ", task.dueDate] }) : null] }), _jsxs("div", { className: "task-meta", children: [urgency ? _jsx("span", { className: `due-badge ${urgency.className}`, children: urgency.label }) : _jsx("span", {}), assignee ? (_jsxs("span", { className: "assignee-pill", children: [_jsx("i", { style: { background: assignee.color } }), assignee.name] })) : (_jsx("span", { className: "assignee-pill empty-assignee", children: "Unassigned" }))] }), fullText ? (_jsx("div", { className: "text-expand-backdrop", role: "dialog", "aria-modal": "true", "aria-label": fullText.label, onClick: () => setFullText(null), children: _jsxs("div", { className: "text-expand-panel", onClick: (e) => e.stopPropagation(), children: [_jsxs("div", { className: "text-expand-header", children: [_jsx("strong", { children: fullText.label }), _jsx("button", { type: "button", className: "ghost", onClick: () => setFullText(null), children: "Close" })] }), _jsx("p", { className: "text-expand-body", children: fullText.text })] }) })) : null] }));
 }
-function Column({ id, label, tasks, assigneeById, openMenuTaskId, onToggleMenu, onOpenHistory, onRequestDelete }) {
+function Column({ id, label, tasks, assigneeById, labelById, openMenuTaskId, onToggleMenu, onOpenHistory, onRequestDelete }) {
     const { setNodeRef, isOver } = useDroppable({ id });
-    return (_jsxs("section", { className: "column", children: [_jsx("h3", { children: label }), _jsx(SortableContext, { items: tasks.map((task) => task.id), strategy: verticalListSortingStrategy, children: _jsxs("div", { ref: setNodeRef, className: `dropzone ${isOver ? "dropzone-over" : ""}`, children: [tasks.length === 0 ? _jsx("p", { className: "empty", children: "No tasks yet." }) : null, tasks.map((task) => (_jsx(TaskCard, { task: task, assignee: task.assigneeId ? assigneeById[task.assigneeId] : undefined, menuOpen: openMenuTaskId === task.id, onToggleMenu: () => onToggleMenu(task.id), onOpenHistory: () => onOpenHistory(task), onRequestDelete: () => onRequestDelete(task) }, task.id)))] }) })] }));
+    return (_jsxs("section", { className: "column", children: [_jsx("h3", { children: label }), _jsx(SortableContext, { items: tasks.map((task) => task.id), strategy: verticalListSortingStrategy, children: _jsxs("div", { ref: setNodeRef, className: `dropzone ${isOver ? "dropzone-over" : ""}`, children: [tasks.length === 0 ? _jsx("p", { className: "empty", children: "No tasks yet." }) : null, tasks.map((task) => (_jsx(TaskCard, { task: task, taskLabels: task.labelIds.map((lid) => labelById[lid]).filter((x) => !!x), assignee: task.assigneeId ? assigneeById[task.assigneeId] : undefined, menuOpen: openMenuTaskId === task.id, onToggleMenu: () => onToggleMenu(task.id), onOpenHistory: () => onOpenHistory(task), onRequestDelete: () => onRequestDelete(task) }, task.id)))] }) })] }));
+}
+function toggleLabelId(selected, id) {
+    return selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id];
 }
 export function App() {
     const [accessToken, setAccessToken] = useState("");
     const [tasks, setTasks] = useState([]);
     const [teamMembers, setTeamMembers] = useState([]);
+    const [labels, setLabels] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [title, setTitle] = useState("");
@@ -115,11 +119,15 @@ export function App() {
     const [priority, setPriority] = useState("normal");
     const [dueDate, setDueDate] = useState("");
     const [assigneeId, setAssigneeId] = useState("");
+    const [createTaskLabelIds, setCreateTaskLabelIds] = useState([]);
     const [memberName, setMemberName] = useState("");
     const [memberColor, setMemberColor] = useState("#6366f1");
+    const [labelName, setLabelName] = useState("");
+    const [labelColor, setLabelColor] = useState("#6366f1");
     const [searchText, setSearchText] = useState("");
     const [priorityFilter, setPriorityFilter] = useState("all");
     const [assigneeFilter, setAssigneeFilter] = useState("all");
+    const [labelFilter, setLabelFilter] = useState("all");
     const sensors = useSensors(useSensor(PointerSensor, {
         activationConstraint: { distance: 10 }
     }));
@@ -128,6 +136,11 @@ export function App() {
     const [history, setHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [dueDateDraft, setDueDateDraft] = useState("");
+    const [comments, setComments] = useState([]);
+    const [commentsLoading, setCommentsLoading] = useState(false);
+    const [newCommentBody, setNewCommentBody] = useState("");
+    const [labelDraft, setLabelDraft] = useState([]);
+    const [labelsSaving, setLabelsSaving] = useState(false);
     const menuCloseRef = useRef(null);
     menuCloseRef.current = () => setOpenMenuTaskId(null);
     useEffect(() => {
@@ -153,9 +166,14 @@ export function App() {
                     throw new Error("Guest session could not be created (no access token returned).");
                 }
                 setAccessToken(token);
-                const [loadedTasks, loadedMembers] = await Promise.all([getTasks(token), getTeamMembers(token)]);
+                const [loadedTasks, loadedMembers, loadedLabels] = await Promise.all([
+                    getTasks(token),
+                    getTeamMembers(token),
+                    getLabels(token)
+                ]);
                 setTasks(loadedTasks);
                 setTeamMembers(loadedMembers);
+                setLabels(loadedLabels);
             }
             catch (loadError) {
                 setError(loadError instanceof Error ? loadError.message : "Failed to initialize board.");
@@ -172,14 +190,21 @@ export function App() {
             return acc;
         }, {});
     }, [teamMembers]);
+    const labelById = useMemo(() => {
+        return labels.reduce((acc, lb) => {
+            acc[lb.id] = lb;
+            return acc;
+        }, {});
+    }, [labels]);
     const filteredTasks = useMemo(() => {
         return tasks.filter((task) => {
             const searchMatch = task.title.toLowerCase().includes(searchText.toLowerCase());
             const priorityMatch = priorityFilter === "all" || task.priority === priorityFilter;
             const assigneeMatch = assigneeFilter === "all" || (assigneeFilter === "unassigned" ? !task.assigneeId : task.assigneeId === assigneeFilter);
-            return searchMatch && priorityMatch && assigneeMatch;
+            const labelMatch = labelFilter === "all" || (task.labelIds ?? []).includes(labelFilter);
+            return searchMatch && priorityMatch && assigneeMatch && labelMatch;
         });
-    }, [tasks, searchText, priorityFilter, assigneeFilter]);
+    }, [tasks, searchText, priorityFilter, assigneeFilter, labelFilter]);
     const grouped = useMemo(() => {
         return columns.reduce((acc, col) => {
             acc[col.id] = filteredTasks.filter((task) => task.status === col.id);
@@ -203,7 +228,8 @@ export function App() {
                 description: description.trim() || null,
                 priority,
                 dueDate: dueDate || null,
-                assigneeId: assigneeId || null
+                assigneeId: assigneeId || null,
+                labelIds: createTaskLabelIds.length > 0 ? createTaskLabelIds : null
             });
             setTasks((current) => [created, ...current]);
             setTitle("");
@@ -211,6 +237,7 @@ export function App() {
             setDueDate("");
             setPriority("normal");
             setAssigneeId("");
+            setCreateTaskLabelIds([]);
         }
         catch (createError) {
             setError(createError instanceof Error ? createError.message : "Failed to create task.");
@@ -228,6 +255,20 @@ export function App() {
         }
         catch (memberError) {
             setError(memberError instanceof Error ? memberError.message : "Failed to create team member.");
+        }
+    }
+    async function onCreateLabel(event) {
+        event.preventDefault();
+        if (!labelName.trim() || !accessToken)
+            return;
+        try {
+            const created = await createLabel(accessToken, { name: labelName.trim(), color: labelColor });
+            setLabels((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+            setLabelName("");
+            setLabelColor("#6366f1");
+        }
+        catch (labelErr) {
+            setError(labelErr instanceof Error ? labelErr.message : "Failed to create label.");
         }
     }
     async function onDragEnd(event) {
@@ -260,17 +301,54 @@ export function App() {
         setOpenMenuTaskId(null);
         setHistoryTask(task);
         setDueDateDraft(task.dueDate ?? "");
+        setLabelDraft([...(task.labelIds ?? [])]);
+        setNewCommentBody("");
         setHistory([]);
+        setComments([]);
         setHistoryLoading(true);
+        setCommentsLoading(true);
         try {
-            const rows = await getTaskActivity(accessToken, task.id);
+            const [rows, commentRows] = await Promise.all([
+                getTaskActivity(accessToken, task.id),
+                getTaskComments(accessToken, task.id)
+            ]);
             setHistory(rows);
+            setComments(commentRows);
         }
         catch (err) {
             setError(err instanceof Error ? err.message : "Failed to load history.");
         }
         finally {
             setHistoryLoading(false);
+            setCommentsLoading(false);
+        }
+    }
+    async function saveTaskLabels() {
+        if (!accessToken || !historyTask)
+            return;
+        setLabelsSaving(true);
+        try {
+            const updated = await updateTaskLabels(accessToken, historyTask.id, labelDraft);
+            setTasks((current) => current.map((t) => (t.id === updated.id ? updated : t)));
+            setHistoryTask(updated);
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to update labels.");
+        }
+        finally {
+            setLabelsSaving(false);
+        }
+    }
+    async function submitComment() {
+        if (!accessToken || !historyTask || !newCommentBody.trim())
+            return;
+        try {
+            const created = await createTaskComment(accessToken, historyTask.id, newCommentBody.trim());
+            setComments((current) => [...current, created]);
+            setNewCommentBody("");
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to add comment.");
         }
     }
     async function saveDueDate() {
@@ -311,5 +389,5 @@ export function App() {
     if (loading) {
         return _jsx("main", { className: "centered", children: "Loading your task board..." });
     }
-    return (_jsxs("main", { className: "layout", children: [_jsxs("header", { className: "hero", children: [_jsx("h1", { children: "Next Play Games Kanban Board" }), _jsx("p", { children: "Drag tasks across stages. Each guest user sees only their own tasks." })] }), _jsx("section", { className: "composer", children: _jsxs("form", { onSubmit: onCreateTask, children: [_jsx("input", { value: title, onChange: (e) => setTitle(e.target.value), placeholder: "Task title", maxLength: 100, required: true }), _jsx("textarea", { value: description, onChange: (e) => setDescription(e.target.value), placeholder: "Description (optional)", maxLength: 500 }), _jsxs("div", { className: "row", children: [_jsxs("select", { value: priority, onChange: (e) => setPriority(e.target.value), children: [_jsx("option", { value: "low", children: "Low" }), _jsx("option", { value: "normal", children: "Normal" }), _jsx("option", { value: "high", children: "High" })] }), _jsxs("select", { value: assigneeId, onChange: (e) => setAssigneeId(e.target.value), children: [_jsx("option", { value: "", children: "Unassigned" }), teamMembers.map((member) => (_jsx("option", { value: member.id, children: member.name }, member.id)))] }), _jsx("input", { type: "date", value: dueDate, onChange: (e) => setDueDate(e.target.value) }), _jsx("button", { type: "submit", children: "Create Task" })] })] }) }), _jsx("section", { className: "composer", children: _jsxs("form", { onSubmit: onCreateTeamMember, children: [_jsx("input", { value: memberName, onChange: (e) => setMemberName(e.target.value), placeholder: "Add team member name", maxLength: 60, required: true }), _jsxs("div", { className: "row", children: [_jsx("input", { type: "color", value: memberColor, onChange: (e) => setMemberColor(e.target.value) }), _jsx("button", { type: "submit", children: "Add Member" })] })] }) }), _jsxs("section", { className: "stats-grid", children: [_jsxs("article", { className: "stat-card", children: [_jsx("strong", { children: boardStats.total }), _jsx("span", { children: "Total" })] }), _jsxs("article", { className: "stat-card", children: [_jsx("strong", { children: boardStats.completed }), _jsx("span", { children: "Completed" })] }), _jsxs("article", { className: "stat-card", children: [_jsx("strong", { children: boardStats.overdue }), _jsx("span", { children: "Overdue" })] })] }), _jsxs("section", { className: "filters", children: [_jsx("input", { value: searchText, onChange: (e) => setSearchText(e.target.value), placeholder: "Search by title" }), _jsxs("select", { value: priorityFilter, onChange: (e) => setPriorityFilter(e.target.value), children: [_jsx("option", { value: "all", children: "All Priorities" }), _jsx("option", { value: "low", children: "Low" }), _jsx("option", { value: "normal", children: "Normal" }), _jsx("option", { value: "high", children: "High" })] }), _jsxs("select", { value: assigneeFilter, onChange: (e) => setAssigneeFilter(e.target.value), children: [_jsx("option", { value: "all", children: "All Assignees" }), _jsx("option", { value: "unassigned", children: "Unassigned" }), teamMembers.map((member) => (_jsx("option", { value: member.id, children: member.name }, member.id)))] })] }), error ? _jsx("p", { className: "error", children: error }) : null, _jsx(DndContext, { sensors: sensors, collisionDetection: closestCorners, onDragEnd: (e) => void onDragEnd(e), children: _jsx("section", { className: "board", children: columns.map((column) => (_jsx(Column, { id: column.id, label: column.label, tasks: grouped[column.id], assigneeById: assigneeById, openMenuTaskId: openMenuTaskId, onToggleMenu: toggleTaskMenu, onOpenHistory: openHistoryModal, onRequestDelete: requestDeleteFromMenu }, column.id))) }) }), historyTask ? (_jsx("div", { className: "modal-backdrop", onClick: () => setHistoryTask(null), children: _jsxs("div", { className: "modal modal-wide", onClick: (e) => e.stopPropagation(), children: [_jsxs("div", { className: "modal-header", children: [_jsx("strong", { children: historyTask.title }), _jsx("button", { className: "ghost", type: "button", onClick: () => setHistoryTask(null), children: "Close" })] }), _jsxs("div", { className: "modal-section", children: [_jsx("label", { className: "label", children: "Update due date" }), _jsxs("div", { className: "row", children: [_jsx("input", { type: "date", value: dueDateDraft, onChange: (e) => setDueDateDraft(e.target.value) }), _jsx("button", { type: "button", onClick: () => void saveDueDate(), children: "Save" })] })] }), _jsxs("div", { className: "modal-section", children: [_jsx("label", { className: "label", children: "Activity timeline" }), _jsx("p", { className: "timeline-hint", children: "Newest changes appear at the bottom after creation." }), historyLoading ? (_jsx("p", { className: "empty", children: "Loading\u2026" })) : (_jsx("ul", { className: "history", children: buildTimeline(historyTask, history).map((entry, idx) => entry.kind === "created" ? (_jsxs("li", { children: [_jsx("span", { children: entry.label }), _jsx("time", { children: new Date(entry.at).toLocaleString() })] }, `created-${idx}`)) : (_jsxs("li", { children: [_jsx("span", { children: formatActivityRow(entry.row) }), _jsx("time", { children: new Date(entry.row.createdAt).toLocaleString() })] }, entry.row.id))) }))] })] }) })) : null] }));
+    return (_jsxs("main", { className: "layout", children: [_jsxs("header", { className: "hero", children: [_jsx("h1", { children: "Next Play Games Kanban Board" }), _jsx("p", { children: "Drag tasks across stages. Each guest user sees only their own tasks." })] }), _jsx("section", { className: "composer", children: _jsxs("form", { onSubmit: onCreateTask, children: [_jsx("input", { value: title, onChange: (e) => setTitle(e.target.value), placeholder: "Task title", maxLength: 100, required: true }), _jsx("textarea", { value: description, onChange: (e) => setDescription(e.target.value), placeholder: "Description (optional)", maxLength: 500 }), _jsxs("div", { className: "row", children: [_jsxs("select", { value: priority, onChange: (e) => setPriority(e.target.value), children: [_jsx("option", { value: "low", children: "Low" }), _jsx("option", { value: "normal", children: "Normal" }), _jsx("option", { value: "high", children: "High" })] }), _jsxs("select", { value: assigneeId, onChange: (e) => setAssigneeId(e.target.value), children: [_jsx("option", { value: "", children: "Unassigned" }), teamMembers.map((member) => (_jsx("option", { value: member.id, children: member.name }, member.id)))] }), _jsx("input", { type: "date", value: dueDate, onChange: (e) => setDueDate(e.target.value) }), _jsx("button", { type: "submit", children: "Create Task" })] }), labels.length > 0 ? (_jsxs("fieldset", { className: "label-pick-fieldset", children: [_jsx("legend", { children: "Labels (optional)" }), _jsx("div", { className: "label-pick-row", children: labels.map((lb) => (_jsxs("label", { className: "label-pick-item", children: [_jsx("input", { type: "checkbox", checked: createTaskLabelIds.includes(lb.id), onChange: () => setCreateTaskLabelIds((prev) => toggleLabelId(prev, lb.id)) }), _jsx("span", { className: "label-chip mini", style: { borderColor: lb.color, color: lb.color }, children: lb.name })] }, lb.id))) })] })) : null] }) }), _jsx("section", { className: "composer", children: _jsxs("form", { onSubmit: onCreateTeamMember, children: [_jsx("input", { value: memberName, onChange: (e) => setMemberName(e.target.value), placeholder: "Add team member name", maxLength: 60, required: true }), _jsxs("div", { className: "row", children: [_jsx("input", { type: "color", value: memberColor, onChange: (e) => setMemberColor(e.target.value) }), _jsx("button", { type: "submit", children: "Add Member" })] })] }) }), _jsx("section", { className: "composer", children: _jsxs("form", { onSubmit: onCreateLabel, children: [_jsx("input", { value: labelName, onChange: (e) => setLabelName(e.target.value), placeholder: "New label name", maxLength: 40, required: true }), _jsxs("div", { className: "row", children: [_jsx("input", { type: "color", value: labelColor, onChange: (e) => setLabelColor(e.target.value) }), _jsx("button", { type: "submit", children: "Add Label" })] })] }) }), _jsxs("section", { className: "stats-grid", children: [_jsxs("article", { className: "stat-card", children: [_jsx("strong", { children: boardStats.total }), _jsx("span", { children: "Total" })] }), _jsxs("article", { className: "stat-card", children: [_jsx("strong", { children: boardStats.completed }), _jsx("span", { children: "Completed" })] }), _jsxs("article", { className: "stat-card", children: [_jsx("strong", { children: boardStats.overdue }), _jsx("span", { children: "Overdue" })] })] }), _jsxs("section", { className: "filters", children: [_jsx("input", { value: searchText, onChange: (e) => setSearchText(e.target.value), placeholder: "Search by title" }), _jsxs("select", { value: priorityFilter, onChange: (e) => setPriorityFilter(e.target.value), children: [_jsx("option", { value: "all", children: "All Priorities" }), _jsx("option", { value: "low", children: "Low" }), _jsx("option", { value: "normal", children: "Normal" }), _jsx("option", { value: "high", children: "High" })] }), _jsxs("select", { value: assigneeFilter, onChange: (e) => setAssigneeFilter(e.target.value), children: [_jsx("option", { value: "all", children: "All Assignees" }), _jsx("option", { value: "unassigned", children: "Unassigned" }), teamMembers.map((member) => (_jsx("option", { value: member.id, children: member.name }, member.id)))] }), _jsxs("select", { value: labelFilter, onChange: (e) => setLabelFilter(e.target.value), children: [_jsx("option", { value: "all", children: "All Labels" }), labels.map((lb) => (_jsx("option", { value: lb.id, children: lb.name }, lb.id)))] })] }), error ? _jsx("p", { className: "error", children: error }) : null, _jsx(DndContext, { sensors: sensors, collisionDetection: closestCorners, onDragEnd: (e) => void onDragEnd(e), children: _jsx("section", { className: "board", children: columns.map((column) => (_jsx(Column, { id: column.id, label: column.label, tasks: grouped[column.id], assigneeById: assigneeById, labelById: labelById, openMenuTaskId: openMenuTaskId, onToggleMenu: toggleTaskMenu, onOpenHistory: openHistoryModal, onRequestDelete: requestDeleteFromMenu }, column.id))) }) }), historyTask ? (_jsx("div", { className: "modal-backdrop", onClick: () => setHistoryTask(null), children: _jsxs("div", { className: "modal modal-wide", onClick: (e) => e.stopPropagation(), children: [_jsxs("div", { className: "modal-header", children: [_jsx("strong", { children: historyTask.title }), _jsx("button", { className: "ghost", type: "button", onClick: () => setHistoryTask(null), children: "Close" })] }), _jsxs("div", { className: "modal-section", children: [_jsx("label", { className: "label", children: "Update due date" }), _jsxs("div", { className: "row", children: [_jsx("input", { type: "date", value: dueDateDraft, onChange: (e) => setDueDateDraft(e.target.value) }), _jsx("button", { type: "button", onClick: () => void saveDueDate(), children: "Save" })] })] }), labels.length > 0 ? (_jsxs("div", { className: "modal-section", children: [_jsx("label", { className: "label", children: "Labels on this task" }), _jsx("div", { className: "label-pick-row modal-label-pick", children: labels.map((lb) => (_jsxs("label", { className: "label-pick-item", children: [_jsx("input", { type: "checkbox", checked: labelDraft.includes(lb.id), onChange: () => setLabelDraft((prev) => toggleLabelId(prev, lb.id)) }), _jsx("span", { className: "label-chip mini", style: { borderColor: lb.color, color: lb.color }, children: lb.name })] }, lb.id))) }), _jsx("button", { type: "button", className: "ghost", disabled: labelsSaving, onClick: () => void saveTaskLabels(), children: labelsSaving ? "Saving…" : "Save labels" })] })) : null, _jsxs("div", { className: "modal-section", children: [_jsx("label", { className: "label", children: "Comments" }), commentsLoading ? (_jsx("p", { className: "empty", children: "Loading comments\u2026" })) : comments.length === 0 ? (_jsx("p", { className: "empty", children: "No comments yet." })) : (_jsx("ul", { className: "comments-list", children: comments.map((c) => (_jsxs("li", { className: "comment-item", children: [_jsx("p", { className: "comment-body", children: c.body }), _jsx("time", { className: "comment-time", children: new Date(c.createdAt).toLocaleString() })] }, c.id))) })), _jsxs("div", { className: "row comment-compose", children: [_jsx("textarea", { value: newCommentBody, onChange: (e) => setNewCommentBody(e.target.value), placeholder: "Write a comment\u2026", maxLength: 4000, rows: 3 }), _jsx("button", { type: "button", onClick: () => void submitComment(), disabled: !newCommentBody.trim(), children: "Post" })] })] }), _jsxs("div", { className: "modal-section", children: [_jsx("label", { className: "label", children: "Activity timeline" }), _jsx("p", { className: "timeline-hint", children: "Newest changes appear at the bottom after creation." }), historyLoading ? (_jsx("p", { className: "empty", children: "Loading\u2026" })) : (_jsx("ul", { className: "history", children: buildTimeline(historyTask, history).map((entry, idx) => entry.kind === "created" ? (_jsxs("li", { children: [_jsx("span", { children: entry.label }), _jsx("time", { children: new Date(entry.at).toLocaleString() })] }, `created-${idx}`)) : (_jsxs("li", { children: [_jsx("span", { children: formatActivityRow(entry.row) }), _jsx("time", { children: new Date(entry.row.createdAt).toLocaleString() })] }, entry.row.id))) }))] })] }) })) : null] }));
 }
